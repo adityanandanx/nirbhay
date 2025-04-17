@@ -15,6 +15,7 @@ import { ScrollView } from "react-native";
 import auth from "@react-native-firebase/auth";
 import { UserIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import ContactsMap from "@/components/specific/ContactsMap";
 
 type Props = {};
 
@@ -53,6 +54,7 @@ const HomePage = (props: Props) => {
           </Center>
         )}
         <EmergencyContacts />
+        <ContactsMap />
         {/* <RecordAudio /> */}
       </VStack>
     </ScrollView>
