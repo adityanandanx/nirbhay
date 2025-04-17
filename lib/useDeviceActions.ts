@@ -4,6 +4,7 @@ import { useAppStore } from "./app-store";
 export const useDeviceActions = () => {
   const device = useAppStore((state) => state.device);
   const [data, setData] = useState("");
+  const [bpm, setBpm] = useState(0.0);
 
   const sendData = async (data: any) => {
     if (!device) {
@@ -29,5 +30,10 @@ export const useDeviceActions = () => {
     };
   }, [device]);
 
-  return { sendData, data };
+  useEffect(() => {
+    const spldata = data.split(" ");
+    setBpm(parseFloat(spldata[0]));
+  }, [data]);
+
+  return { sendData, bpm };
 };

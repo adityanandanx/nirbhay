@@ -15,6 +15,7 @@ import { Icon } from "../ui/icon";
 import { Spinner } from "../ui/spinner";
 import { Text } from "../ui/text";
 import { VStack } from "../ui/vstack";
+import { useDeviceActions } from "@/lib/useDeviceActions";
 type Props = {};
 const BandStatus = (props: Props) => {
   const deviceConnectionState = useAppStore(
@@ -22,6 +23,8 @@ const BandStatus = (props: Props) => {
   );
   const connectToDevice = useAppStore((state) => state.connectToDevice);
   const device = useAppStore((state) => state.device);
+
+  const { bpm } = useDeviceActions();
 
   const linkIcon =
     deviceConnectionState === "connected"
@@ -75,7 +78,7 @@ const BandStatus = (props: Props) => {
                 className="stroke-typography-900"
               />
               <Text size="lg" bold className="text-typography-900">
-                72 bpm
+                {bpm} bpm
               </Text>
             </HStack>
           </HStack>

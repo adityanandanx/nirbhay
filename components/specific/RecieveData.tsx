@@ -7,11 +7,11 @@ import { Text } from "../ui/text";
 type Props = {};
 
 const RecieveData = (props: Props) => {
-  const { data } = useDeviceActions();
+  const { bpm } = useDeviceActions();
   return (
     <Box>
       <Text>RecieveData</Text>
-      <Text>{data}</Text>
+      <Text>{bpm}</Text>
     </Box>
   );
 };
