@@ -30,7 +30,6 @@ const HomePage = (props: Props) => {
           </Center>
         )}
         <FriendsAndFamilyList />
-        <RecieveData />
       </VStack>
     </ScrollView>
   );

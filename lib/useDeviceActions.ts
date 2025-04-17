@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "./app-store";
+import RNBluetoothClassic from "react-native-bluetooth-classic";
 
 export const useDeviceActions = () => {
   const device = useAppStore((state) => state.device);
+  const onDeviceDisconnected = useAppStore(
+    (state) => state.onDeviceDisconnected
+  );
+
   const [data, setData] = useState("");
   const [bpm, setBpm] = useState(0.0);
 
@@ -20,15 +25,26 @@ export const useDeviceActions = () => {
 
   useEffect(() => {
     if (!device) return;
-    const sub = device.onDataReceived((event) => {
+
+    // Setup data received handler
+    const dataSub = device.onDataReceived((event) => {
       console.log("Received data:", event.data);
       setData(event.data);
     });
 
+    // Setup disconnection handler
+    const disconnectSub = RNBluetoothClassic.onDeviceDisconnected((e) => {
+      console.log(e);
+
+      console.log("Device disconnected");
+      onDeviceDisconnected();
+    });
+
     return () => {
-      sub.remove();
+      dataSub.remove();
+      disconnectSub.remove();
     };
-  }, [device]);
+  }, [device, onDeviceDisconnected]);
 
   useEffect(() => {
     const spldata = data.split(" ");

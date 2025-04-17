@@ -21,6 +21,7 @@ type AppStateActions = {
   connectToDevice: () => Promise<void>;
   requestBluetoothPermissions: () => Promise<boolean>;
   requestAccessFineLocationPermission: () => Promise<boolean>;
+  onDeviceDisconnected: () => void;
 };
 
 type AppStore = AppState & AppStateActions;
@@ -31,6 +32,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
   heartRate: 0,
   shieldState: "inactive",
   device: null,
+
+  onDeviceDisconnected: () => {
+    set({
+      deviceConnectionState: "disconnected",
+      shieldState: "inactive",
+      device: null,
+      heartRate: 0.0,
+    });
+  },
 
   toggleShield() {
     set((state) => ({
