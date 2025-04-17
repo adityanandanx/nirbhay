@@ -14,7 +14,7 @@
 		96905EF65AED1B983A6B3ABC /* libPods-testexpo.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-testexpo.a */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		87372C3EEDA3424580AED875 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = F49BD1C21C6E4E26B5DC0889 /* noop-file.swift */; };
+		72B35E46693744E8BFA4CB69 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A73F95D085D48C7ADC44699 /* noop-file.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,8 +31,8 @@
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-testexpo/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		F49BD1C21C6E4E26B5DC0889 /* noop-file.swift */ = {isa = PBXFileReference; name = "noop-file.swift"; path = "testexpo/noop-file.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
-		295992336A15443EA16AF10A /* testexpo-Bridging-Header.h */ = {isa = PBXFileReference; name = "testexpo-Bridging-Header.h"; path = "testexpo/testexpo-Bridging-Header.h"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; explicitFileType = undefined; includeInIndex = 0; };
+		5A73F95D085D48C7ADC44699 /* noop-file.swift */ = {isa = PBXFileReference; name = "noop-file.swift"; path = "testexpo/noop-file.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		0A21B062951F429B80170AD8 /* testexpo-Bridging-Header.h */ = {isa = PBXFileReference; name = "testexpo-Bridging-Header.h"; path = "testexpo/testexpo-Bridging-Header.h"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,8 +57,8 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				13B07FB71A68108700A75B9A /* main.m */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				F49BD1C21C6E4E26B5DC0889 /* noop-file.swift */,
-				295992336A15443EA16AF10A /* testexpo-Bridging-Header.h */,
+				5A73F95D085D48C7ADC44699 /* noop-file.swift */,
+				0A21B062951F429B80170AD8 /* testexpo-Bridging-Header.h */,
 			);
 			name = testexpo;
 			sourceTree = "<group>";
@@ -198,7 +198,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				4704CA0ACED74002B3309D34 /* testexpo-Bridging-Header.h in Resources */,
+				901BFB81EB5548608EF9576B /* testexpo-Bridging-Header.h in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -274,7 +274,7 @@
 				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
-				87372C3EEDA3424580AED875 /* noop-file.swift in Sources */,
+				72B35E46693744E8BFA4CB69 /* noop-file.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

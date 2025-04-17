@@ -8,10 +8,12 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
-import { useColorScheme } from "@/components/useColorScheme";
-import { Slot } from "expo-router";
+import { Slot, Stack } from "expo-router";
 
 import "../global.css";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { StatusBar } from "@/components/ui/status-bar";
+import { Text, View } from "react-native";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -61,7 +63,14 @@ function RootLayoutNav() {
   return (
     <GluestackUIProvider mode={colorScheme === "dark" ? "dark" : "light"}>
       <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Slot />
+        <StatusBar
+          barStyle={"default"}
+          // backgroundColor={`${colorScheme == "light" ? "#F6F6F6" : "#272625"}`}
+          className="bg-background-0"
+        />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+        </Stack>
       </ThemeProvider>
     </GluestackUIProvider>
   );
