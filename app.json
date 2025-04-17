@@ -21,6 +21,7 @@
       "package": "com.madman24.testexpo",
       "permissions": [
         "android.permission.BLUETOOTH_SCAN",
+        "android.permission.CALL_PHONE",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.BLUETOOTH_ADVERTISE"

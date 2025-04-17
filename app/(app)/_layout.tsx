@@ -34,6 +34,10 @@ export default function RootLayoutNav() {
           name="add-contact-modal"
           options={{ presentation: "modal" }}
         />
+        <Stack.Screen
+          name="edit-contact-modal"
+          options={{ presentation: "modal" }}
+        />
       </Stack>
     </VStack>
   );

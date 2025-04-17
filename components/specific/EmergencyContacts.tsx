@@ -1,21 +1,26 @@
-import { ArrowRightIcon, UserIcon, UsersIcon } from "lucide-react-native";
+import auth from "@react-native-firebase/auth";
+import firestore from "@react-native-firebase/firestore";
+import { Link } from "expo-router";
+import { PhoneIcon, UserIcon, EditIcon } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { Box } from "../ui/box";
+import {
+  Alert,
+  Linking,
+  PermissionsAndroid,
+  TouchableOpacity,
+} from "react-native";
+import { Avatar } from "../ui/avatar";
+import { Button, ButtonText } from "../ui/button";
 import { Card } from "../ui/card";
-import { Divider } from "../ui/divider";
+import { FlatList } from "../ui/flat-list";
 import { HStack } from "../ui/hstack";
 import { Icon } from "../ui/icon";
-import { Text } from "../ui/text";
-import { VStack } from "../ui/vstack";
 import { Spinner } from "../ui/spinner";
-import firestore from "@react-native-firebase/firestore";
-import { FirebaseAuthTypes } from "@react-native-firebase/auth";
-import { FlatList } from "../ui/flat-list";
+import { Text } from "../ui/text";
 import { View } from "../ui/view";
-import { Avatar, AvatarImage } from "../ui/avatar";
-import auth from "@react-native-firebase/auth";
-import { Button, ButtonText } from "../ui/button";
-import { Link } from "expo-router";
+import { VStack } from "../ui/vstack";
+// @ts-ignore
+import call from "react-native-phone-call";
 
 type Contact = {
   name: string;
@@ -35,42 +40,11 @@ const EmergencyContacts = (props: Props) => {
     if (!user) throw new Error("User not found");
     const subscriber = firestore()
       .collection(`users/${user.uid}/contacts`)
-      // .doc(user.uid + "/contacts/")
       .onSnapshot((querySnapshot) => {
         const contacts: { name: string; phoneNumber: string }[] = [];
 
         querySnapshot.forEach((contactNumber) => {
           contacts.push(contactNumber.data() as Contact);
-
-          // firestore()
-          //   .collection("users")
-          //   .doc(contact)
-          //   .get()
-          //   .then((doc) => {
-          //     if (doc.exists) {
-          //       contacts.push({
-          //         name: doc.data()!.name,
-          //         phoneNumber: doc.data()!.phoneNumber,
-          //       });
-          //     }
-          //   });
-          // firestore()
-          //   .collection("users")
-          //   .where("phoneNumber", "==", contact.phoneNumber)
-          //   .get()
-          //   .then((doc) => {
-          //     if (doc.empty) {
-          //       console.log("No such document!");
-          //       return;
-          //     }
-          //     doc.forEach((doc) => {
-          //       contacts.push({
-          //         name: doc.data().name,
-          //         phoneNumber: doc.data().phoneNumber,
-          //       });
-          //     });
-          //   });
-          // contacts.push(contact);
         });
 
         setContacts(contacts);
@@ -81,6 +55,29 @@ const EmergencyContacts = (props: Props) => {
     return () => subscriber();
   }, []);
 
+  // Function to make a phone call
+  const makePhoneCall = async (phoneNumber: string) => {
+    await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.CALL_PHONE,
+      {
+        title: "Phone Call Permission",
+        message: "This app needs access to your phone to make calls.",
+        buttonNeutral: "Ask Me Later",
+        buttonNegative: "Cancel",
+        buttonPositive: "OK",
+      }
+    );
+    // Format the phone number for the dialer
+    const formattedNumber = phoneNumber.replace(/\s/g, "").replace("+", "");
+    console.log(formattedNumber);
+
+    await call({
+      number: formattedNumber, // String value with the number to call
+      prompt: false, // Optional boolean property. Determines if the user should be prompted prior to the call
+      skipCanOpen: true, // Skip the canOpenURL check
+    });
+  };
+
   if (loading) return <Spinner />;
 
   return (
@@ -89,17 +86,44 @@ const EmergencyContacts = (props: Props) => {
       data={contacts}
       renderItem={({ item }) => (
         <Card size="lg">
-          <HStack className="items-center" space="2xl">
-            <Avatar
-              size="lg"
-              className="border border-background-100 bg-background-0"
+          <HStack className="items-center justify-between" space="2xl">
+            <Link
+              href={{
+                pathname: "/(app)/edit-contact-modal",
+                params: {
+                  contactId: item.phoneNumber.replace(/\s/g, ""),
+                  originalName: item.name,
+                  originalNumber: item.phoneNumber,
+                },
+              }}
+              asChild
             >
-              <Icon as={UserIcon} className="stroke-typography-900 w-8 h-8" />
-            </Avatar>
-            <VStack>
-              <Text size="xl">{item.name}</Text>
-              <Text size="sm">{item.phoneNumber}</Text>
-            </VStack>
+              <TouchableOpacity className="flex-1">
+                <HStack className="items-center" space="2xl">
+                  <Avatar
+                    size="lg"
+                    className="border border-background-100 bg-background-0"
+                  >
+                    <Icon
+                      as={UserIcon}
+                      className="stroke-typography-900 w-8 h-8"
+                    />
+                  </Avatar>
+                  <VStack>
+                    <Text size="xl">{item.name}</Text>
+                    <Text size="sm">{item.phoneNumber}</Text>
+                  </VStack>
+                </HStack>
+              </TouchableOpacity>
+            </Link>
+            <HStack space="md">
+              <TouchableOpacity
+                onPress={() => makePhoneCall(item.phoneNumber)}
+                className="rounded-full p-3"
+              >
+                <Icon as={PhoneIcon} className="stroke-white w-5 h-5" />
+              </TouchableOpacity>
+            </HStack>
           </HStack>
         </Card>
       )}
