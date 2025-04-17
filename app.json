@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.madman24.testexpo"
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -41,7 +42,9 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
     ],
     "experiments": {
       "typedRoutes": true

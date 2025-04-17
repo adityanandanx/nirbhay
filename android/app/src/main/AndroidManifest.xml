@@ -37,6 +37,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="myapp"/>
         <data android:scheme="com.madman24.testexpo"/>
+        <data android:scheme="exp+test-expo"/>
       </intent-filter>
     </activity>
   </application>
