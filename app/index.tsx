@@ -1,6 +1,7 @@
 import BandStatus from "@/components/specific/BandStatus";
-import FriendsAndFamilyList from "@/components/specific/FriendsAndFamilyList";
+import EmergencyContacts from "@/components/specific/EmergencyContacts";
 import RecieveData from "@/components/specific/RecieveData";
+import RecordAudio from "@/components/specific/RecordAudio";
 import Shield from "@/components/specific/Shield";
 import { Center } from "@/components/ui/center";
 import { Text } from "@/components/ui/text";
@@ -29,7 +30,8 @@ const HomePage = (props: Props) => {
             </Text>
           </Center>
         )}
-        <FriendsAndFamilyList />
+        <EmergencyContacts />
+        {/* <RecordAudio /> */}
       </VStack>
     </ScrollView>
   );

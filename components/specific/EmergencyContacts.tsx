@@ -10,10 +10,9 @@ import { Box } from "../ui/box";
 
 type Props = {};
 
-const FriendsAndFamilyList = (props: Props) => {
+const EmergencyContacts = (props: Props) => {
   return (
     <VStack>
-      {/* FAMILY */}
       <Card size="lg">
         <HStack space="2xl" className=" items-center">
           <Box className="p-2">
@@ -33,7 +32,6 @@ const FriendsAndFamilyList = (props: Props) => {
       </Card>
       <Divider />
 
-      {/* FRIENDS */}
       <Card size="lg">
         <HStack space="2xl" className=" items-center">
           <Box className="p-2">
@@ -56,4 +54,4 @@ const FriendsAndFamilyList = (props: Props) => {
   );
 };
 
-export default FriendsAndFamilyList;
+export default EmergencyContacts;

@@ -87,7 +87,7 @@ const BandStatus = (props: Props) => {
           action={"primary"}
           variant={"solid"}
           size={"lg"}
-          isDisabled={false}
+          isDisabled={deviceConnectionState === "connecting"}
           onPress={connectToDevice}
         >
           <ButtonText>Search for device</ButtonText>
