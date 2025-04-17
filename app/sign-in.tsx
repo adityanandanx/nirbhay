@@ -12,6 +12,8 @@ import { ImageBackground } from "@/components/ui/image-background";
 import { Input, InputField } from "@/components/ui/input";
 import { VStack } from "@/components/ui/vstack";
 import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
+import firestore from "@react-native-firebase/firestore";
+
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 
@@ -40,14 +42,24 @@ const SignIn = (props: Props) => {
       try {
         const user = await result.confirm(otp);
         console.log(user);
+        if (!user) {
+          console.log("User not found");
+          return;
+        }
+        await firestore().collection("users").doc(user.user.uid).set({
+          phoneNumber: user.user.phoneNumber,
+          displayName: user.user.displayName,
+          contacts: [],
+        });
         // User signed in successfully
+        router.replace("/");
       } catch (error) {
         // Handle error
         console.log(error);
+        setPending(false);
+        return;
       }
     }
-    setPending(true);
-    router.replace("/");
   };
 
   return (

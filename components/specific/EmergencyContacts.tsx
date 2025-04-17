@@ -1,56 +1,118 @@
-import React from "react";
-import { VStack } from "../ui/vstack";
-import { UsersIcon, ArrowRightIcon } from "lucide-react-native";
+import { ArrowRightIcon, UserIcon, UsersIcon } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import { Box } from "../ui/box";
 import { Card } from "../ui/card";
 import { Divider } from "../ui/divider";
 import { HStack } from "../ui/hstack";
-import { Text } from "../ui/text";
 import { Icon } from "../ui/icon";
-import { Box } from "../ui/box";
+import { Text } from "../ui/text";
+import { VStack } from "../ui/vstack";
+import { Spinner } from "../ui/spinner";
+import firestore from "@react-native-firebase/firestore";
+import { FirebaseAuthTypes } from "@react-native-firebase/auth";
+import { FlatList } from "../ui/flat-list";
+import { View } from "../ui/view";
+import { Avatar, AvatarImage } from "../ui/avatar";
+import auth from "@react-native-firebase/auth";
+import { Button, ButtonText } from "../ui/button";
+import { Link } from "expo-router";
+
+type Contact = {
+  name: string;
+  phoneNumber: string;
+};
 
 type Props = {};
 
 const EmergencyContacts = (props: Props) => {
+  const [loading, setLoading] = useState(true); // Set loading to true on component mount
+  const [contacts, setContacts] = useState<
+    { name: string; phoneNumber: string }[]
+  >([]); // Initial empty array of users
+  const user = auth().currentUser;
+
+  useEffect(() => {
+    if (!user) throw new Error("User not found");
+    const subscriber = firestore()
+      .collection(`users/${user.uid}/contacts`)
+      // .doc(user.uid + "/contacts/")
+      .onSnapshot((querySnapshot) => {
+        const contacts: { name: string; phoneNumber: string }[] = [];
+
+        querySnapshot.forEach((contactNumber) => {
+          contacts.push(contactNumber.data() as Contact);
+
+          // firestore()
+          //   .collection("users")
+          //   .doc(contact)
+          //   .get()
+          //   .then((doc) => {
+          //     if (doc.exists) {
+          //       contacts.push({
+          //         name: doc.data()!.name,
+          //         phoneNumber: doc.data()!.phoneNumber,
+          //       });
+          //     }
+          //   });
+          // firestore()
+          //   .collection("users")
+          //   .where("phoneNumber", "==", contact.phoneNumber)
+          //   .get()
+          //   .then((doc) => {
+          //     if (doc.empty) {
+          //       console.log("No such document!");
+          //       return;
+          //     }
+          //     doc.forEach((doc) => {
+          //       contacts.push({
+          //         name: doc.data().name,
+          //         phoneNumber: doc.data().phoneNumber,
+          //       });
+          //     });
+          //   });
+          // contacts.push(contact);
+        });
+
+        setContacts(contacts);
+        setLoading(false);
+      });
+
+    // Unsubscribe from events when no longer in use
+    return () => subscriber();
+  }, []);
+
+  if (loading) return <Spinner />;
+
   return (
-    <VStack>
-      <Card size="lg">
-        <HStack space="2xl" className=" items-center">
-          <Box className="p-2">
-            <Icon as={UsersIcon} className="stroke-typography-900 w-12 h-12" />
-          </Box>
-          <VStack className="justify-center flex-1">
-            <Text size="2xl" bold className="text-typography-900">
-              Family
-            </Text>
-            <Text size="sm" className="text-typography-900">
-              7 members
-            </Text>
-          </VStack>
-
-          <Icon as={ArrowRightIcon} className="stroke-typography-500 w-8 h-8" />
-        </HStack>
-      </Card>
-      <Divider />
-
-      <Card size="lg">
-        <HStack space="2xl" className=" items-center">
-          <Box className="p-2">
-            <Icon as={UsersIcon} className="stroke-typography-900 w-12 h-12" />
-          </Box>
-          <VStack className="justify-center flex-1">
-            <Text size="2xl" bold className="text-typography-900">
-              Friends
-            </Text>
-            <Text size="sm" className="text-typography-900">
-              30 people
-            </Text>
-          </VStack>
-
-          <Icon as={ArrowRightIcon} className="stroke-typography-500 w-8 h-8" />
-        </HStack>
-      </Card>
-      <Divider />
-    </VStack>
+    <FlatList
+      scrollEnabled={false}
+      data={contacts}
+      renderItem={({ item }) => (
+        <Card size="lg">
+          <HStack className="items-center" space="2xl">
+            <Avatar
+              size="lg"
+              className="border border-background-100 bg-background-0"
+            >
+              <Icon as={UserIcon} className="stroke-typography-900 w-8 h-8" />
+            </Avatar>
+            <VStack>
+              <Text size="xl">{item.name}</Text>
+              <Text size="sm">{item.phoneNumber}</Text>
+            </VStack>
+          </HStack>
+        </Card>
+      )}
+      ListFooterComponent={() => (
+        <View className="p-8">
+          <Link asChild href={"/(app)/add-contact-modal"}>
+            <Button>
+              <ButtonText>Add Contact</ButtonText>
+            </Button>
+          </Link>
+        </View>
+      )}
+    />
   );
 };
 

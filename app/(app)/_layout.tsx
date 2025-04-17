@@ -30,6 +30,10 @@ export default function RootLayoutNav() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="profile" />
+        <Stack.Screen
+          name="add-contact-modal"
+          options={{ presentation: "modal" }}
+        />
       </Stack>
     </VStack>
   );
