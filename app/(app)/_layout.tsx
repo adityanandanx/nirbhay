@@ -10,6 +10,7 @@ import { Text } from "@/components/ui/text";
 import { View } from "react-native";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
+import SOSNotificationListener from "../../components/specific/SOSNotificationListener";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -22,23 +23,26 @@ export default function RootLayoutNav() {
   if (!user) return <Redirect href={"/sign-in"} />;
 
   return (
-    <VStack className="flex-1">
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="profile" />
-        <Stack.Screen
-          name="add-contact-modal"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="edit-contact-modal"
-          options={{ presentation: "modal" }}
-        />
-      </Stack>
-    </VStack>
+    <>
+      <VStack className="flex-1">
+        <Stack
+          screenOptions={{
+            headerShown: false,
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen
+            name="add-contact-modal"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="edit-contact-modal"
+            options={{ presentation: "modal" }}
+          />
+        </Stack>
+      </VStack>
+      <SOSNotificationListener />
+    </>
   );
 }
