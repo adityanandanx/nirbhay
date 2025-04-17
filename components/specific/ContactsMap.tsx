@@ -29,18 +29,21 @@ const ContactsMap = (props: Props) => {
 
   return (
     <View className="flex-1 h-96 w-full">
-      <Text>
-        {location?.coords.latitude} {location?.coords.longitude}
-      </Text>
       <MapView
         style={{ flex: 1 }}
         showsMyLocationButton={true}
         showsUserLocation={true}
         showsTraffic={true}
         showsIndoors={true}
+        showsBuildings={true}
+        showsCompass={true}
+        showsScale={true}
+        showsPointsOfInterest={true}
+        showsIndoorLevelPicker={true}
+        followsUserLocation={true}
         initialRegion={{
-          latitude: location?.coords.latitude || 37.78825,
-          longitude: location?.coords.longitude || -122.4324,
+          latitude: location?.coords.latitude || 28.7041,
+          longitude: location?.coords.longitude || 77.1025,
           latitudeDelta: 0.0922,
           longitudeDelta: 0.0421,
         }}
