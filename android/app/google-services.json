@@ -2,7 +2,8 @@
   "project_info": {
     "project_number": "267857970549",
     "project_id": "nirbhay-dfa48",
-    "storage_bucket": "nirbhay-dfa48.firebasestorage.app"
+    "storage_bucket": "nirbhay-dfa48.firebasestorage.app",
+    "firebase_url": "https://nirbhay-dfa48-default-rtdb.asia-southeast1.firebasedatabase.app"
   },
   "client": [
     {

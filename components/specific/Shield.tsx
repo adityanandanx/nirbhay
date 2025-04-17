@@ -64,7 +64,7 @@ const Shield = (props: Props) => {
     >
       <VStack space="md" className="items-center">
         {/* Shield Icon */}
-        <Box className="w-80 h-80">
+        <Box className="w-64 h-64">
           <Image
             style={{ width: "100%", height: "100%" }}
             alt="shield icon"
