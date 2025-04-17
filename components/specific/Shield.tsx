@@ -8,15 +8,13 @@ import { Text } from "../ui/text";
 import { Toast, ToastTitle, useToast } from "../ui/toast";
 import { VStack } from "../ui/vstack";
 import { Image } from "expo-image";
+import { useAppStore } from "@/lib/app-store";
 
 type Props = {};
 
 const Shield = (props: Props) => {
-  const [shieldState, setSheildState] = useState("standby");
-
-  const toggleShield = () => {
-    setSheildState((v) => (v === "standby" ? "active" : "standby"));
-  };
+  const shieldState = useAppStore((state) => state.shieldState);
+  const toggleShield = useAppStore((state) => state.toggleShield);
 
   const toast = useToast();
 

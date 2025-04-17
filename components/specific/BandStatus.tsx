@@ -1,4 +1,5 @@
 import { Button, ButtonText } from "@/components/ui/button";
+import { useAppStore } from "@/lib/app-store";
 
 import {
   BatteryFullIcon,
@@ -16,9 +17,11 @@ import { Text } from "../ui/text";
 import { VStack } from "../ui/vstack";
 type Props = {};
 const BandStatus = (props: Props) => {
-  const deviceConnectionState: string = "connected";
-
-  const connectToDevice = () => {};
+  const deviceConnectionState = useAppStore(
+    (state) => state.deviceConnectionState
+  );
+  const connectToDevice = useAppStore((state) => state.connectToDevice);
+  const device = useAppStore((state) => state.device);
 
   const linkIcon =
     deviceConnectionState === "connected"
@@ -44,6 +47,9 @@ const BandStatus = (props: Props) => {
         {/* Connection Status */}
         <HStack space="sm" className="items-center">
           <Icon as={linkIcon} size="xl" className="stroke-typography-900" />
+          <Text size="lg" bold className="text-typography-900">
+            {device?.name}
+          </Text>
           <Text size="lg" bold className="text-typography-900">
             {linkText}
           </Text>
