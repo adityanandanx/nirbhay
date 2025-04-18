@@ -26,43 +26,43 @@ const Shield = (props: Props) => {
   const toast = useToast();
 
   // Automatic shield activation based on sensor readings
-  useEffect(() => {
-    // Only check when shield is activated and device is connected
-    if (shieldState === "active" && deviceConnectionState === "connected") {
-      const heartRateHigh = sensorData.heartRate > 100;
-      const highAcceleration =
-        Math.abs(sensorData.rawAccel.x) > 1.5 ||
-        Math.abs(sensorData.rawAccel.y) > 1.5 ||
-        Math.abs(sensorData.rawAccel.z) > 1.5;
+  // useEffect(() => {
+  //   // Only check when shield is activated and device is connected
+  //   if (shieldState === "active" && deviceConnectionState === "connected") {
+  //     const heartRateHigh = sensorData.heartRate > 100;
+  //     const highAcceleration =
+  //       Math.abs(sensorData.rawAccel.x) > 1.5 ||
+  //       Math.abs(sensorData.rawAccel.y) > 1.5 ||
+  //       Math.abs(sensorData.rawAccel.z) > 1.5;
 
-      // Show alert if heart rate is high or sudden acceleration is detected
-      if (heartRateHigh || highAcceleration) {
-        toast.show({
-          placement: "top",
-          render: ({ id }) => {
-            const toastId = "toast-alert-" + id;
-            return (
-              <Toast
-                nativeID={toastId}
-                className="py-0 px-4 gap-2 shadow-soft-1 items-center flex-row bg-error-500"
-              >
-                <Icon
-                  as={TriangleAlertIcon}
-                  size="xl"
-                  className="stroke-typography-100"
-                />
-                <ToastTitle className="py-4" size="sm">
-                  {heartRateHigh
-                    ? "High heart rate detected!"
-                    : "Sudden movement detected!"}
-                </ToastTitle>
-              </Toast>
-            );
-          },
-        });
-      }
-    }
-  }, [sensorData, shieldState, deviceConnectionState]);
+  //     // Show alert if heart rate is high or sudden acceleration is detected
+  //     if (heartRateHigh || highAcceleration) {
+  //       toast.show({
+  //         placement: "top",
+  //         render: ({ id }) => {
+  //           const toastId = "toast-alert-" + id;
+  //           return (
+  //             <Toast
+  //               nativeID={toastId}
+  //               className="py-0 px-4 gap-2 shadow-soft-1 items-center flex-row bg-error-500"
+  //             >
+  //               <Icon
+  //                 as={TriangleAlertIcon}
+  //                 size="xl"
+  //                 className="stroke-typography-100"
+  //               />
+  //               <ToastTitle className="py-4" size="sm">
+  //                 {heartRateHigh
+  //                   ? "High heart rate detected!"
+  //                   : "Sudden movement detected!"}
+  //               </ToastTitle>
+  //             </Toast>
+  //           );
+  //         },
+  //       });
+  //     }
+  //   }
+  // }, [sensorData, shieldState, deviceConnectionState]);
 
   const handlePress = () => {
     if (deviceConnectionState !== "connected") {

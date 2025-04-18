@@ -71,7 +71,7 @@ const HomePage = (props: Props) => {
             </Text>
           </Center>
         )}
-        <EmergencyContacts />
+        {/* <EmergencyContacts /> */}
         <ContactsMap />
         {/* <DebugPanel /> */}
         {/* <RecordAudio /> */}
