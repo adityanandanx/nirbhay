@@ -127,7 +127,7 @@ const ContactsMap = (props: Props) => {
       </MapView>
 
       {/* Add the debug component at the bottom */}
-      <LocationDebug />
+      {/* <LocationDebug /> */}
 
       {/* SOS Confirmation Modal */}
       <Modal isOpen={sosModalVisible} onClose={closeModal}>

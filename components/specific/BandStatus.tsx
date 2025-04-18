@@ -7,6 +7,10 @@ import {
   Link2Icon,
   Link2OffIcon,
   SearchIcon,
+  RotateCwIcon, // for gyroscope
+  MoveIcon, // for acceleration
+  ThermometerIcon, // for temperature
+  FootprintsIcon, // for pedometer
 } from "lucide-react-native";
 import React from "react";
 import { Card } from "../ui/card";
@@ -16,7 +20,9 @@ import { Spinner } from "../ui/spinner";
 import { Text } from "../ui/text";
 import { VStack } from "../ui/vstack";
 import { useDeviceActions } from "@/lib/useDeviceActions";
+
 type Props = {};
+
 const BandStatus = (props: Props) => {
   const deviceConnectionState = useAppStore(
     (state) => state.deviceConnectionState
@@ -24,7 +30,7 @@ const BandStatus = (props: Props) => {
   const connectToDevice = useAppStore((state) => state.connectToDevice);
   const device = useAppStore((state) => state.device);
 
-  const { bpm } = useDeviceActions();
+  const { sensorData } = useDeviceActions();
 
   const linkIcon =
     deviceConnectionState === "connected"
@@ -44,6 +50,12 @@ const BandStatus = (props: Props) => {
     }
   })();
 
+  const formatVector = (vector: { x: number; y: number; z: number }) => {
+    return `x:${vector.x.toFixed(2)} y:${vector.y.toFixed(
+      2
+    )} z:${vector.z.toFixed(2)}`;
+  };
+
   return (
     <Card size="lg">
       <VStack space="sm" className="items-center">
@@ -59,30 +71,82 @@ const BandStatus = (props: Props) => {
         </HStack>
 
         {deviceConnectionState === "connected" && (
-          <HStack space="xl" className="items-center">
-            <HStack space="sm" className="items-center">
-              <Icon
-                as={BatteryFullIcon}
-                size="xl"
-                className="stroke-typography-900"
-              />
-              <Text size="lg" bold className="text-typography-900">
-                57%
-              </Text>
+          <VStack space="md" className="w-full">
+            <HStack space="xl" className="items-center justify-between">
+              <HStack space="sm" className="items-center">
+                <Icon
+                  as={BatteryFullIcon}
+                  size="xl"
+                  className="stroke-typography-900"
+                />
+                <Text size="lg" bold className="text-typography-900">
+                  57%
+                </Text>
+              </HStack>
+
+              <HStack space="sm" className="items-center">
+                <Icon
+                  as={HeartIcon}
+                  size="xl"
+                  className="stroke-typography-900"
+                />
+                <Text size="lg" bold className="text-typography-900">
+                  {sensorData.heartRate.toFixed(0)} bpm
+                </Text>
+              </HStack>
             </HStack>
 
-            <HStack space="sm" className="items-center">
-              <Icon
-                as={HeartIcon}
-                size="xl"
-                className="stroke-typography-900"
-              />
-              <Text size="lg" bold className="text-typography-900">
-                {bpm} bpm
-              </Text>
-            </HStack>
-          </HStack>
+            {/* Sensor Data */}
+            <VStack space="sm" className="w-full">
+              <HStack space="sm" className="items-center">
+                <Icon
+                  as={RotateCwIcon}
+                  size="lg"
+                  className="stroke-typography-900"
+                />
+                <Text size="sm" className="text-typography-900">
+                  Gyro: {formatVector(sensorData.rawGyro)}
+                </Text>
+              </HStack>
+
+              <HStack space="sm" className="items-center">
+                <Icon
+                  as={MoveIcon}
+                  size="lg"
+                  className="stroke-typography-900"
+                />
+                <Text size="sm" className="text-typography-900">
+                  Accel: {formatVector(sensorData.rawAccel)}
+                </Text>
+              </HStack>
+
+              <HStack space="sm" className="items-center justify-between">
+                <HStack space="sm" className="items-center">
+                  <Icon
+                    as={ThermometerIcon}
+                    size="lg"
+                    className="stroke-typography-900"
+                  />
+                  <Text size="sm" className="text-typography-900">
+                    {sensorData.skinTemperature.toFixed(1)} °C
+                  </Text>
+                </HStack>
+
+                <HStack space="sm" className="items-center">
+                  <Icon
+                    as={FootprintsIcon}
+                    size="lg"
+                    className="stroke-typography-900"
+                  />
+                  <Text size="sm" className="text-typography-900">
+                    {sensorData.deltaPedometer} steps
+                  </Text>
+                </HStack>
+              </HStack>
+            </VStack>
+          </VStack>
         )}
+
         <Button
           action={"primary"}
           variant={"solid"}
@@ -97,4 +161,5 @@ const BandStatus = (props: Props) => {
     </Card>
   );
 };
+
 export default BandStatus;

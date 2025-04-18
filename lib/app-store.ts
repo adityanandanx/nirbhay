@@ -7,11 +7,58 @@ import RNBluetoothClassic, {
 export type BandConnectionState = "connected" | "connecting" | "disconnected";
 export type ShieldState = "active" | "inactive" | "standby";
 
+// Define comprehensive sensor data types
+export interface SensorData {
+  // Gyroscope Accelerometer
+  gyroAccel: {
+    meanX: number;
+    stdDevX: number;
+    meanY: number;
+    stdDevY: number;
+    meanZ: number;
+    stdDevZ: number;
+  };
+
+  // Gyroscope Angular Velocity
+  gyroVelocity: {
+    meanX: number;
+    stdDevX: number;
+    meanY: number;
+    stdDevY: number;
+    meanZ: number;
+    stdDevZ: number;
+  };
+
+  // Accelerometer
+  accel: {
+    meanX: number;
+    stdDevX: number;
+    meanY: number;
+    stdDevY: number;
+    meanZ: number;
+    stdDevZ: number;
+  };
+
+  // Health and Activity data
+  heartRate: number;
+  skinTemperature: number;
+  deltaPedometer: number;
+  deltaDistance: number;
+  speed: number;
+  pace: number;
+  deltaCalories: number;
+  uv: number;
+
+  // Raw values for display
+  rawGyro: { x: number; y: number; z: number };
+  rawAccel: { x: number; y: number; z: number };
+}
+
 type AppState = {
   deviceConnectionState: BandConnectionState;
   device: BluetoothDevice | null;
   deviceBatteryPercentage: number;
-  heartRate: number;
+  sensorData: SensorData;
   shieldState: ShieldState;
 };
 
@@ -22,14 +69,53 @@ type AppStateActions = {
   requestBluetoothPermissions: () => Promise<boolean>;
   requestAccessFineLocationPermission: () => Promise<boolean>;
   onDeviceDisconnected: () => void;
+  updateSensorData: (data: SensorData) => void;
 };
 
 type AppStore = AppState & AppStateActions;
 
+// Initial sensor data state
+const initialSensorData: SensorData = {
+  gyroAccel: {
+    meanX: 0,
+    stdDevX: 0,
+    meanY: 0,
+    stdDevY: 0,
+    meanZ: 0,
+    stdDevZ: 0,
+  },
+  gyroVelocity: {
+    meanX: 0,
+    stdDevX: 0,
+    meanY: 0,
+    stdDevY: 0,
+    meanZ: 0,
+    stdDevZ: 0,
+  },
+  accel: {
+    meanX: 0,
+    stdDevX: 0,
+    meanY: 0,
+    stdDevY: 0,
+    meanZ: 0,
+    stdDevZ: 0,
+  },
+  heartRate: 0,
+  skinTemperature: 0,
+  deltaPedometer: 0,
+  deltaDistance: 0,
+  speed: 0,
+  pace: 0,
+  deltaCalories: 0,
+  uv: 0,
+  rawGyro: { x: 0, y: 0, z: 0 },
+  rawAccel: { x: 0, y: 0, z: 0 },
+};
+
 export const useAppStore = create<AppStore>((set, get) => ({
   deviceConnectionState: "disconnected",
   deviceBatteryPercentage: 0,
-  heartRate: 0,
+  sensorData: initialSensorData,
   shieldState: "inactive",
   device: null,
 
@@ -38,8 +124,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       deviceConnectionState: "disconnected",
       shieldState: "inactive",
       device: null,
-      heartRate: 0.0,
+      sensorData: initialSensorData,
     });
+  },
+
+  updateSensorData: (data: SensorData) => {
+    set({ sensorData: data });
   },
 
   toggleShield() {

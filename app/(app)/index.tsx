@@ -16,6 +16,7 @@ import auth from "@react-native-firebase/auth";
 import { UserIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import ContactsMap from "@/components/specific/ContactsMap";
+import DebugPanel from "@/components/specific/DebugPanel";
 
 type Props = {};
 
@@ -53,8 +54,9 @@ const HomePage = (props: Props) => {
             </Text>
           </Center>
         )}
-        <EmergencyContacts />
-        <ContactsMap />
+        {/* <EmergencyContacts /> */}
+        {/* <ContactsMap /> */}
+        <DebugPanel />
         {/* <RecordAudio /> */}
       </VStack>
     </ScrollView>
