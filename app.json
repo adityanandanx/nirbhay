@@ -15,7 +15,9 @@
     "android": {
       "googleServicesFile": "./google-services.json",
       "config": {
-        "googleMaps": { "apiKey": "AIzaSyAuCYWG8QtrBCKb3t5JTcmjrass3Xw-y9Q" }
+        "googleMaps": {
+          "apiKey": "AIzaSyAuCYWG8QtrBCKb3t5JTcmjrass3Xw-y9Q"
+        }
       },
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -55,7 +57,8 @@
       ],
       "expo-speech-recognition",
       "@react-native-firebase/app",
-      "@react-native-firebase/auth"
+      "@react-native-firebase/auth",
+      "react-native-fast-tflite"
     ],
     "experiments": {
       "typedRoutes": true

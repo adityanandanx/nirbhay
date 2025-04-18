@@ -1,14 +1,13 @@
 import React from "react";
-import { View } from "../../components/ui/view";
-import { Text } from "../../components/ui/text";
-import { HStack } from "../../components/ui/hstack";
-import { VStack } from "../../components/ui/vstack";
-import { Button, ButtonText } from "../../components/ui/button";
-import { Icon } from "../../components/ui/icon";
 import { Phone, AlertCircle, ArrowLeft } from "lucide-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import MapView, { Marker } from "react-native-maps";
-import { Linking, Platform } from "react-native";
+import { Linking, Platform, View } from "react-native";
+import { VStack } from "@/components/ui/vstack";
+import { HStack } from "@/components/ui/hstack";
+import { Button, ButtonText } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import { Text } from "@/components/ui/text";
 
 export default function SOSDetails() {
   const router = useRouter();
