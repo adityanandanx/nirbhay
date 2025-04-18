@@ -10,6 +10,7 @@ import { VStack } from "../ui/vstack";
 import { Image } from "expo-image";
 import { useAppStore } from "@/lib/app-store";
 import { useDeviceActions } from "@/lib/useDeviceActions";
+import { Button, ButtonText } from "../ui/button";
 
 type Props = {};
 
@@ -20,6 +21,7 @@ const Shield = (props: Props) => {
     (state) => state.deviceConnectionState
   );
   const { sensorData } = useDeviceActions();
+  const { demo } = useDeviceActions();
 
   const toast = useToast();
 

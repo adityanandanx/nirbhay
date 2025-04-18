@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAppStore, SensorData } from "./app-store";
 import RNBluetoothClassic from "react-native-bluetooth-classic";
+import { useDemoData } from "./useDemoData";
 
 export const useDeviceActions = () => {
   const device = useAppStore((state) => state.device);
@@ -13,6 +14,9 @@ export const useDeviceActions = () => {
   const [rawData, setRawData] = useState("");
   const [lastError, setLastError] = useState<string | null>(null);
   const [dataBuffer, setDataBuffer] = useState<string>("");
+
+  // Initialize demo data hook
+  const demoDataControls = useDemoData();
 
   // Send data to the HC-05 device
   const sendData = async (data: string) => {
@@ -218,6 +222,8 @@ export const useDeviceActions = () => {
     sensorData,
     rawData,
     lastError,
-    testParse, // Add this for debugging in the UI
+    testParse,
+    // Export demo controls
+    demo: demoDataControls,
   };
 };

@@ -17,6 +17,8 @@ import { UserIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import ContactsMap from "@/components/specific/ContactsMap";
 import DebugPanel from "@/components/specific/DebugPanel";
+import { Button, ButtonText } from "@/components/ui/button";
+import { useDeviceActions } from "@/lib/useDeviceActions";
 
 type Props = {};
 
@@ -25,6 +27,15 @@ const HomePage = (props: Props) => {
     (state) => state.deviceConnectionState
   );
   const user = auth().currentUser;
+  const { demo } = useDeviceActions();
+
+  const handleDemo = () => {
+    if (demo.isDemoActive) {
+      demo.stopDemo();
+    } else {
+      demo.startDemo();
+    }
+  };
   return (
     <ScrollView className="flex-1 w-full">
       <HStack className="px-4 py-2 justify-end bg-background-0">
@@ -46,7 +57,13 @@ const HomePage = (props: Props) => {
         <Shield />
         <Center>
           <BandStatus />
+          <Button onPress={handleDemo} variant="outline">
+            <ButtonText>
+              {demo.isDemoActive ? "Stop Demo" : "Start Demo"}
+            </ButtonText>
+          </Button>
         </Center>
+
         {deviceConnectionState === "connected" && (
           <Center>
             <Text size="lg" className="text-typography-900">
@@ -54,9 +71,9 @@ const HomePage = (props: Props) => {
             </Text>
           </Center>
         )}
-        {/* <EmergencyContacts /> */}
-        {/* <ContactsMap /> */}
-        <DebugPanel />
+        <EmergencyContacts />
+        <ContactsMap />
+        {/* <DebugPanel /> */}
         {/* <RecordAudio /> */}
       </VStack>
     </ScrollView>

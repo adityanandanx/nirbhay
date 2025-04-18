@@ -94,11 +94,11 @@ export const useContactsLocations = () => {
       // Get the database reference (with optional custom URL)
       const db = database();
 
-      console.log("Attempting to update location in Firebase:", {
-        lat: location.coords.latitude,
-        lng: location.coords.longitude,
-        uid: user.uid,
-      });
+      // console.log("Attempting to update location in Firebase:", {
+      //   lat: location.coords.latitude,
+      //   lng: location.coords.longitude,
+      //   uid: user.uid,
+      // });
 
       await db.ref(`/locations/${user.uid}`).update({
         latitude: location.coords.latitude,
@@ -109,13 +109,13 @@ export const useContactsLocations = () => {
         email: user.email || "",
       });
 
-      console.log("Successfully updated location in Firebase");
+      // console.log("Successfully updated location in Firebase");
 
       // Verify the data was written by reading it back
       const snapshot = await db.ref(`/locations/${user.uid}`).once("value");
-      console.log("Current location data in database:", snapshot.val());
+      // console.log("Current location data in database:", snapshot.val());
     } catch (error) {
-      console.error("Error updating location in Firebase:", error);
+      // console.error("Error updating location in Firebase:", error);
     }
   };
 
@@ -181,27 +181,27 @@ export const useContactsLocations = () => {
     const setupLocationListeners = async () => {
       try {
         const phoneToUserIdMap = await fetchPhoneToUserIdMap();
-        console.log(
-          "Phone to user ID map created:",
-          Array.from(phoneToUserIdMap.entries()).length,
-          "entries"
-        );
+        // console.log(
+        //   "Phone to user ID map created:",
+        //   Array.from(phoneToUserIdMap.entries()).length,
+        //   "entries"
+        // );
 
         // Create a reference to the locations node in Realtime Database
         const db = database();
         const locationsRef = db.ref("/locations");
-        console.log("Listening for location updates at path: /locations");
+        // console.log("Listening for location updates at path: /locations");
 
         // Listen for changes - using 'value' event to get all locations at once
         locationsRef.on(
           "value",
           (snapshot) => {
             const locationsData = snapshot.val() || {};
-            console.log(
-              "Received location updates:",
-              Object.keys(locationsData).length,
-              "locations available"
-            );
+            // console.log(
+            //   "Received location updates:",
+            //   Object.keys(locationsData).length,
+            //   "locations available"
+            // );
 
             // Update our contacts with location data if available
             setContactsLocations((prevContacts) => {
@@ -212,12 +212,12 @@ export const useContactsLocations = () => {
 
                 // If we have location data for this user
                 if (userId && locationsData[userId]) {
-                  console.log(
-                    "Found location for contact:",
-                    contact.name,
-                    locationsData[userId].latitude,
-                    locationsData[userId].longitude
-                  );
+                  // console.log(
+                  //   "Found location for contact:",
+                  //   contact.name,
+                  //   locationsData[userId].latitude,
+                  //   locationsData[userId].longitude
+                  // );
 
                   return {
                     ...contact,
@@ -240,7 +240,7 @@ export const useContactsLocations = () => {
 
         // Return cleanup function
         return () => {
-          console.log("Removing location listeners");
+          // console.log("Removing location listeners");
           locationsRef.off("value");
         };
       } catch (error) {

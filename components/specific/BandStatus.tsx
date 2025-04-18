@@ -147,16 +147,18 @@ const BandStatus = (props: Props) => {
           </VStack>
         )}
 
-        <Button
-          action={"primary"}
-          variant={"solid"}
-          size={"lg"}
-          isDisabled={deviceConnectionState === "connecting"}
-          onPress={connectToDevice}
-        >
-          <ButtonText>Search for device</ButtonText>
-          <Icon as={SearchIcon} size="lg" className="stroke-typography-100" />
-        </Button>
+        {!(deviceConnectionState === "connected") && (
+          <Button
+            action={"primary"}
+            variant={"solid"}
+            size={"lg"}
+            isDisabled={deviceConnectionState === "connecting"}
+            onPress={connectToDevice}
+          >
+            <ButtonText>Search for device</ButtonText>
+            <Icon as={SearchIcon} size="lg" className="stroke-typography-100" />
+          </Button>
+        )}
       </VStack>
     </Card>
   );

@@ -64,21 +64,21 @@ const ContactsMap = (props: Props) => {
   }
 
   // Log to debug
-  console.log("My location:", myLocation?.coords);
-  console.log(
-    "Contacts with locations:",
-    contactsLocations.filter((c) => c.location)
-  );
+  // console.log("My location:", myLocation?.coords);
+  // console.log(
+  //   "Contacts with locations:",
+  //   contactsLocations.filter((c) => c.location)
+  // );
 
   return (
     <View className="flex-1 w-full">
       {/* SOS Button at the top */}
       <Button
         onPress={handleSOSPress}
-        className="bg-error-500 w-fit self-center px-6 py-3"
+        className="bg-error-500 w-fit self-center"
       >
         {/* <HStack space="md" className="items-center"> */}
-        <Icon as={AlertCircle} className="stroke-white w-5 h-5" />
+        <Icon as={AlertCircle} className="stroke-typography-0 w-5 h-5" />
         <ButtonText className="font-bold">SOS</ButtonText>
         {/* </HStack> */}
       </Button>
