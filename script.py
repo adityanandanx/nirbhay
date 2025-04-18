@@ -2,7 +2,7 @@ import serial
 import time
 import os
 
-csv_file_path = "D:\\Btech\\PRIDE dataset\\User17\\Dataset\\ACDS.csv"   
+csv_file_path = "D:\\Btech\\PRIDE dataset\\User17\\Dataset\\test.csv"   
 arduino_port = "COM8"             
 baud_rate = 115200
 
@@ -25,10 +25,9 @@ def send_csv(file_path, port, baud):
         for idx, line in enumerate(file):
             clean_line = line.strip()
             if clean_line:
-                ser.write((clean_line + '\n').encode('utf-8'))
+                ser.write((clean_line + ' ').encode('utf-8'))
                 print(f"[{idx}] Sent: {clean_line}")
                 
-                # 🔄 Wait for Arduino to respond with "OK" (optional safety)
                 try:
                     ack = ser.readline().decode().strip()
                     if ack != "OK":
@@ -38,7 +37,7 @@ def send_csv(file_path, port, baud):
 
                 time.sleep(0.15)  # Give Arduino time to process
 
-    print("\n✅ Done sending CSV.")
+    print("\nDone sending CSV.")
     ser.close()
 
 # === MAIN ===
