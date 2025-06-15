@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import '../ble_connection_screen.dart';
+import '../../services/ble_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -9,7 +12,51 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isSafetyModeActive = false;
-  final String _wearableStatus = 'Connected'; // Mock status
+  String _wearableStatus = 'Not Connected';
+  final BLEService _bleService = BLEService();
+  BluetoothConnectionState _connectionState =
+      BluetoothConnectionState.disconnected;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeBLE();
+  }
+
+  void _initializeBLE() {
+    // Listen to BLE connection state changes
+    _bleService.connectionState.listen((state) {
+      if (mounted) {
+        setState(() {
+          _connectionState = state;
+          _updateWearableStatus();
+        });
+      }
+    });
+
+    // Initialize connection state
+    _updateWearableStatus();
+  }
+
+  void _updateWearableStatus() {
+    switch (_connectionState) {
+      case BluetoothConnectionState.connected:
+        _wearableStatus = 'Connected';
+        break;
+      case BluetoothConnectionState.disconnected:
+        _wearableStatus = 'Not Connected';
+        break;
+      default:
+        _wearableStatus = 'Connecting...';
+        break;
+    }
+  }
+
+  void _navigateToBLEConnection() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const BLEConnectionScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -170,58 +217,111 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade100,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.watch,
-                        color: Colors.blue.shade600,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Smart Bracelet',
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color:
+                                _connectionState ==
+                                        BluetoothConnectionState.connected
+                                    ? Colors.green.shade100
+                                    : Colors.blue.shade100,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.watch,
+                            color:
+                                _connectionState ==
+                                        BluetoothConnectionState.connected
+                                    ? Colors.green.shade600
+                                    : Colors.blue.shade600,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Smart Bracelet',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Status: $_wearableStatus',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                _connectionState ==
+                                        BluetoothConnectionState.connected
+                                    ? Colors.green.shade100
+                                    : Colors.red.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _wearableStatus,
                             style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                              color:
+                                  _connectionState ==
+                                          BluetoothConnectionState.connected
+                                      ? Colors.green.shade700
+                                      : Colors.red.shade700,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Status: $_wearableStatus',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _wearableStatus,
-                        style: TextStyle(
-                          color: Colors.green.shade700,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _navigateToBLEConnection,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              _connectionState ==
+                                      BluetoothConnectionState.connected
+                                  ? Colors.green
+                                  : Colors.purple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: Icon(
+                          _connectionState == BluetoothConnectionState.connected
+                              ? Icons.settings
+                              : Icons.bluetooth_searching,
+                        ),
+                        label: Text(
+                          _connectionState == BluetoothConnectionState.connected
+                              ? 'Manage Device'
+                              : 'Connect Device',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
