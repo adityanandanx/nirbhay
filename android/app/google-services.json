@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "267857970549",
+    "firebase_url": "https://nirbhay-dfa48-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "nirbhay-dfa48",
+    "storage_bucket": "nirbhay-dfa48.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:267857970549:android:b0d3141ecb1a275621ff3c",
+        "android_client_info": {
+          "package_name": "com.example.nirbhay_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCOb_7Pq27Qqn2fLKoHOdyQBj9ue1Lnu-k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
