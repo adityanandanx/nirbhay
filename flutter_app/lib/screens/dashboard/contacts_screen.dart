@@ -1,36 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/emergency_contact.dart';
+import '../../providers/app_providers.dart';
 
-class ContactsScreen extends StatefulWidget {
+class ContactsScreen extends ConsumerStatefulWidget {
   const ContactsScreen({super.key});
 
   @override
-  State<ContactsScreen> createState() => _ContactsScreenState();
+  ConsumerState<ContactsScreen> createState() => _ContactsScreenState();
 }
 
-class _ContactsScreenState extends State<ContactsScreen> {
-  final List<EmergencyContact> _emergencyContacts = [
-    EmergencyContact(
-      name: 'Mom',
-      phone: '+1 234 567 8900',
-      relationship: 'Family',
-      isActive: true,
-    ),
-    EmergencyContact(
-      name: 'Dad',
-      phone: '+1 234 567 8901',
-      relationship: 'Family',
-      isActive: true,
-    ),
-    EmergencyContact(
-      name: 'Best Friend Sarah',
-      phone: '+1 234 567 8902',
-      relationship: 'Friend',
-      isActive: false,
-    ),
-  ];
-
+class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   @override
   Widget build(BuildContext context) {
+    final safetyState = ref.watch(safetyStateProvider);
+    final emergencyContacts = safetyState.emergencyContacts;
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -61,7 +46,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  '${_emergencyContacts.where((c) => c.isActive).length} Active',
+                  '${emergencyContacts.where((c) => c.isActive).length} Active',
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                 ),
               ],
@@ -70,10 +55,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
             Expanded(
               child: ListView.builder(
-                itemCount: _emergencyContacts.length,
+                itemCount: emergencyContacts.length,
                 itemBuilder: (context, index) {
-                  final contact = _emergencyContacts[index];
-                  return _buildContactCard(contact, index);
+                  final contact = emergencyContacts[index];
+                  return _buildContactCard(contact, index, emergencyContacts);
                 },
               ),
             ),
@@ -105,7 +90,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  Widget _buildContactCard(EmergencyContact contact, int index) {
+  Widget _buildContactCard(
+    EmergencyContact contact,
+    int index,
+    List<EmergencyContact> contacts,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -191,9 +180,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
               Switch(
                 value: contact.isActive,
                 onChanged: (value) {
-                  setState(() {
-                    _emergencyContacts[index].isActive = value;
-                  });
+                  final updatedContact = contact.copyWith(isActive: value);
+                  ref
+                      .read(safetyStateProvider.notifier)
+                      .updateEmergencyContact(updatedContact);
                 },
                 activeColor: Colors.purple,
               ),
@@ -233,7 +223,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       ),
                     ],
                 onSelected:
-                    (value) => _handleContactAction(value.toString(), index),
+                    (value) =>
+                        _handleContactAction(value.toString(), index, contacts),
               ),
             ],
           ),
@@ -255,20 +246,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  void _handleContactAction(String action, int index) {
+  void _handleContactAction(
+    String action,
+    int index,
+    List<EmergencyContact> contacts,
+  ) {
     switch (action) {
       case 'edit':
-        _editContact(index);
+        _editContact(index, contacts);
         break;
       case 'call':
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Calling ${_emergencyContacts[index].name}...'),
-          ),
+          SnackBar(content: Text('Calling ${contacts[index].name}...')),
         );
         break;
       case 'delete':
-        _deleteContact(index);
+        _deleteContact(index, contacts);
         break;
     }
   }
@@ -277,18 +270,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _showContactDialog();
   }
 
-  void _editContact(int index) {
-    _showContactDialog(contact: _emergencyContacts[index], index: index);
+  void _editContact(int index, List<EmergencyContact> contacts) {
+    _showContactDialog(contact: contacts[index], index: index);
   }
 
-  void _deleteContact(int index) {
+  void _deleteContact(int index, List<EmergencyContact> contacts) {
     showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
             title: const Text('Delete Contact'),
             content: Text(
-              'Are you sure you want to delete ${_emergencyContacts[index].name}?',
+              'Are you sure you want to delete ${contacts[index].name}?',
             ),
             actions: [
               TextButton(
@@ -297,9 +290,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
               ElevatedButton(
                 onPressed: () {
-                  setState(() {
-                    _emergencyContacts.removeAt(index);
-                  });
+                  ref
+                      .read(safetyStateProvider.notifier)
+                      .removeEmergencyContact(contacts[index].id);
                   Navigator.of(context).pop();
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -375,20 +368,35 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 onPressed: () {
                   if (nameController.text.isNotEmpty &&
                       phoneController.text.isNotEmpty) {
-                    final newContact = EmergencyContact(
-                      name: nameController.text,
-                      phone: phoneController.text,
-                      relationship: selectedRelationship,
-                      isActive: true,
-                    );
-
-                    setState(() {
-                      if (index != null) {
-                        _emergencyContacts[index] = newContact;
-                      } else {
-                        _emergencyContacts.add(newContact);
-                      }
-                    });
+                    if (index != null) {
+                      // Update existing contact
+                      final updatedContact = contact!.copyWith(
+                        name: nameController.text,
+                        phone: phoneController.text,
+                        relationship: selectedRelationship,
+                      );
+                      ref
+                          .read(safetyStateProvider.notifier)
+                          .updateEmergencyContact(updatedContact);
+                    } else {
+                      // Add new contact
+                      final newContact = EmergencyContact(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: nameController.text,
+                        phone: phoneController.text,
+                        relationship: selectedRelationship,
+                        isActive: true,
+                        priority:
+                            (ref
+                                    .read(safetyStateProvider)
+                                    .emergencyContacts
+                                    .length +
+                                1),
+                      );
+                      ref
+                          .read(safetyStateProvider.notifier)
+                          .addEmergencyContact(newContact);
+                    }
                     Navigator.of(context).pop();
                   }
                 },
@@ -402,18 +410,4 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
     );
   }
-}
-
-class EmergencyContact {
-  String name;
-  String phone;
-  String relationship;
-  bool isActive;
-
-  EmergencyContact({
-    required this.name,
-    required this.phone,
-    required this.relationship,
-    required this.isActive,
-  });
 }

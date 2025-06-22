@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/emergency_contact.dart';
 import '../providers/app_providers.dart';
 import '../providers/safety_provider.dart';
 
@@ -76,11 +77,15 @@ class EmergencyContactsScreen extends ConsumerWidget {
                 return Card(
                   child: ListTile(
                     leading: const CircleAvatar(child: Icon(Icons.person)),
-                    title: Text(contact),
+                    title: Text(contact.name),
+                    subtitle: Text(
+                      '${contact.phone} • ${contact.relationship}',
+                    ),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
                       onPressed:
-                          () => safetyNotifier.removeEmergencyContact(contact),
+                          () =>
+                              safetyNotifier.removeEmergencyContact(contact.id),
                     ),
                   ),
                 );
@@ -90,7 +95,12 @@ class EmergencyContactsScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddContactDialog(context, safetyNotifier),
+        onPressed:
+            () => _showAddContactDialog(
+              context,
+              safetyNotifier,
+              safetyState.emergencyContacts.length,
+            ),
         backgroundColor: Colors.red,
         child: const Icon(Icons.add, color: Colors.white),
       ),
@@ -100,20 +110,36 @@ class EmergencyContactsScreen extends ConsumerWidget {
   void _showAddContactDialog(
     BuildContext context,
     SafetyStateNotifier notifier,
+    int currentContactCount,
   ) {
-    final controller = TextEditingController();
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
 
     showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
             title: const Text('Add Emergency Contact'),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'Contact Name or Phone',
-                border: OutlineInputBorder(),
-              ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Contact Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+              ],
             ),
             actions: [
               TextButton(
@@ -122,8 +148,17 @@ class EmergencyContactsScreen extends ConsumerWidget {
               ),
               ElevatedButton(
                 onPressed: () {
-                  if (controller.text.isNotEmpty) {
-                    notifier.addEmergencyContact(controller.text);
+                  if (nameController.text.isNotEmpty &&
+                      phoneController.text.isNotEmpty) {
+                    final newContact = EmergencyContact(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      name: nameController.text,
+                      phone: phoneController.text,
+                      relationship: 'Other',
+                      isActive: true,
+                      priority: currentContactCount + 1,
+                    );
+                    notifier.addEmergencyContact(newContact);
                     Navigator.pop(context);
                   }
                 },

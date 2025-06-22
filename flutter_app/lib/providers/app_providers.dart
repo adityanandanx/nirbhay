@@ -24,5 +24,8 @@ final settingsStateProvider =
 
 final safetyStateProvider =
     StateNotifierProvider<SafetyStateNotifier, SafetyState>(
-      (ref) => SafetyStateNotifier(ref.read(bleStateProvider.notifier)),
+      (ref) => SafetyStateNotifier(
+        ref.read(bleStateProvider.notifier),
+        ref.read(settingsStateProvider.notifier),
+      ),
     );

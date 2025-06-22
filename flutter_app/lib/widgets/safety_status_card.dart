@@ -8,8 +8,6 @@ class SafetyStatusCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final safetyState = ref.watch(safetyStateProvider);
-    final bleState = ref.watch(bleStateProvider);
-    final canActivate = bleState.isConnected;
 
     // Show error message if there's an error
     if (safetyState.error != null) {
@@ -72,9 +70,7 @@ class SafetyStatusCard extends ConsumerWidget {
           Text(
             safetyState.isSafetyModeActive
                 ? 'You are protected and monitored'
-                : canActivate
-                ? 'Tap to activate protection'
-                : 'Connect wearable device to activate',
+                : 'Tap to activate protection',
             style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 20),
@@ -82,12 +78,10 @@ class SafetyStatusCard extends ConsumerWidget {
             onPressed:
                 safetyState.isLoading
                     ? null
-                    : (safetyState.isSafetyModeActive || canActivate)
-                    ? () =>
+                    : () =>
                         ref
                             .read(safetyStateProvider.notifier)
-                            .toggleSafetyMode()
-                    : null,
+                            .toggleSafetyMode(),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor:
@@ -107,9 +101,7 @@ class SafetyStatusCard extends ConsumerWidget {
                     : Text(
                       safetyState.isSafetyModeActive
                           ? 'Deactivate'
-                          : canActivate
-                          ? 'Activate'
-                          : 'Device Required',
+                          : 'Activate',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
