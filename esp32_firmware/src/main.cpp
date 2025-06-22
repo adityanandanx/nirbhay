@@ -2,100 +2,549 @@
 #include "Arduino_GFX_Library.h"
 #include "pin_config.h"
 #include <Wire.h>
-#include "HWCDC.h"
 #include "MAX30105.h"
-
 #include "heartRate.h"
+#include "spo2_algorithm.h"
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+#include "SensorQMI8658.hpp"
+// Device and service identifiers
+#define DEVICE_NAME "Nirbhay_Device"
+#define SERVICE_UUID "12345678-1234-1234-1234-123456789abc"
+#define CHARACTERISTIC_UUID "87654321-4321-4321-4321-cba987654321"
 
+// Initialize MAX30102 sensor
 MAX30105 particleSensor;
 
-const byte RATE_SIZE = 4; //Increase this for more averaging. 4 is good.
-byte rates[RATE_SIZE]; //Array of heart rates
-byte rateSpot = 0;
-long lastBeat = 0; //Time at which the last beat occurred
+// BLE variables
+BLEServer* pServer = NULL;
+BLECharacteristic* pCharacteristic = NULL;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+bool emergencyButton = false;
 
+// Display setup
+Arduino_DataBus *bus = new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCK, LCD_MOSI);
+Arduino_GFX *gfx = new Arduino_ST7789(bus, LCD_RST /* RST */,
+                                     0 /* rotation */, true /* IPS */, LCD_WIDTH, LCD_HEIGHT, 0, 20, 0, 0);
+
+// Heart rate calculation variables 
+const byte RATE_SIZE = 4;  // Increase for more averaging
+byte rates[RATE_SIZE];     // Array of heart rates
+byte rateSpot = 0;
+long lastBeat = 0;         // Time at which the last beat occurred
 float beatsPerMinute;
 int beatAvg;
 
-Arduino_DataBus *bus = new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCK, LCD_MOSI);
+// Finger presence detection variables
+long unblockedValue = 0;   // Average IR at power up
+bool fingerPresent = false;
+bool previousFingerPresent = false; // To track finger presence changes
 
-Arduino_GFX *gfx = new Arduino_ST7789(bus, LCD_RST /* RST */,
-                                      0 /* rotation */, true /* IPS */, LCD_WIDTH, LCD_HEIGHT, 0, 20, 0, 0);
+// SpO2 calculation variables 
+uint32_t irBuffer[100];    // infrared LED sensor data
+uint32_t redBuffer[100];   // red LED sensor data
+int32_t bufferLength = 50;
+int32_t spo2 = 0;          
+int8_t validSPO2 = 0;      // indicator to show if the SPO2 calculation is valid
+int32_t heartRate = 0;    
+int8_t validHeartRate = 0; // indicator to show if the heart rate calculation is valid
 
-void setup(void) {
-  USBSerial.begin(115200);
-  // USBSerial.setDebugOutput(true);
-  // while(!USBSerial);
-  USBSerial.println("Arduino_GFX Hello World example");
-  USBSerial.println("Initializing...");
+// Timing variables 
+unsigned long lastSpO2Check = 0;
+unsigned long lastDisplay = 0;
+unsigned long lastBLEUpdate = 0;
+bool initialSPO2Done = false;
+bool collectingSpo2 = false;
+int spo2Index = 0;
+unsigned long sampleTimestamp = 0;
 
-  // Initialize sensor
-  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) //Use default I2C port, 400kHz speed
-  {
-    USBSerial.println("MAX30102 was not found. Please check wiring/power. ");
-    while (1);
+// IMU sensor and data variables
+SensorQMI8658 qmi;
+IMUdata acc;    // Acceleration data
+IMUdata gyr;    // Gyroscope data
+bool imuInitialized = false;
+unsigned long lastIMUCheck = 0;
+
+void sendSensorData() {
+  if (pCharacteristic) {
+    // Get current sensor values
+    uint32_t red = particleSensor.getRed();
+    uint32_t ir = particleSensor.getIR();
+    
+    // Check finger presence
+    long currentDelta = ir - unblockedValue;
+    fingerPresent = (currentDelta > 50000);
+    
+    // Create JSON-like string with all data (including emergency status)
+    String data = "{";
+    data += "\"heartRate\":" + String(beatAvg > 0 ? beatAvg : 0) + ",";
+    data += "\"spo2\":" + String(validSPO2 ? spo2 : 0) + ",";
+    data += "\"fingerPresent\":" + String(fingerPresent ? "true" : "false") + ",";
+    data += "\"emergency\":" + String(emergencyButton ? "true" : "false") + ",";
+    
+    if (imuInitialized) {
+      data += "\"accel\":{";
+      data += "\"x\":" + String(acc.x) + ",";
+      data += "\"y\":" + String(acc.y) + ",";
+      data += "\"z\":" + String(acc.z);
+      data += "},";
+      
+      data += "\"gyro\":{";
+      data += "\"x\":" + String(gyr.x) + ",";
+      data += "\"y\":" + String(gyr.y) + ",";
+      data += "\"z\":" + String(gyr.z);
+      data += "},";
+    }
+    data += "\"timestamp\":" + String(millis());
+    data += "}";
+
+    pCharacteristic->setValue(data.c_str());
+    pCharacteristic->notify();
+
+    Serial.println("Sent: " + data);
   }
-  USBSerial.println("Place your index finger on the sensor with steady pressure.");
- particleSensor.setup(); //Configure sensor with default settings
-  particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
-  particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED 
-  // Init Display
+}
+
+// BLE callbacks
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+      Serial.println("Device Connected");
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+      Serial.println("Device Disconnected");
+    }
+};
+
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string rxValueStd = pCharacteristic->getValue();
+      
+      if (rxValueStd.length() > 0) {
+        String rxValue = String(rxValueStd.c_str());
+        Serial.println("Received Value: " + rxValue);
+
+        // Handle commands from Flutter app
+        if (rxValue == "GET_STATUS") {
+          sendSensorData();
+        } else if (rxValue == "EMERGENCY_ACK") {
+          emergencyButton = false;
+          Serial.println("Emergency acknowledged");
+          
+          // Immediately send updated status to confirm acknowledgement
+          sendSensorData();
+        }
+      }
+    }
+};
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("MAX30102 Heart Rate and SpO2 Monitor");
+  
+  // Initialize display
   if (!gfx->begin()) {
-    USBSerial.println("gfx->begin() failed!");
+    Serial.println("gfx->begin() failed!");
   }
+  
   gfx->fillScreen(BLACK);
-
   pinMode(LCD_BL, OUTPUT);
   digitalWrite(LCD_BL, HIGH);
-
+  
+  // Display startup message
   gfx->setCursor(10, 10);
-  gfx->setTextColor(RED);
-  gfx->println("Hello World!");
+  gfx->setTextColor(WHITE);
+  gfx->setTextSize(2);
+  gfx->println("Nirbhay Device");
+  gfx->setCursor(10, 40);
+  gfx->println("Initializing...");
+  
+  // Initialize I2C - using the pins that worked for you
+  Wire.begin(11, 10);  // SCL=11, SDA=10
+  
+  // Initialize sensor
+  if (particleSensor.begin(Wire, I2C_SPEED_FAST) == false) {
+    Serial.println("MAX30102 was not found. Check wiring.");
+   
+    gfx->fillScreen(BLACK);
+    gfx->setCursor(10, 10);
+    gfx->setTextColor(RED);
+    gfx->setTextSize(2);
+    gfx->println("Sensor Error!");
+    gfx->setCursor(10, 40);
+    gfx->println("Check wiring");
+    
+    while (1); // Stop execution
+  }
+  
+  // Sensor found - show success message
+  gfx->fillScreen(BLACK);
+  gfx->setCursor(10, 10);
+  gfx->setTextColor(GREEN);
+  gfx->setTextSize(2);
+  gfx->println("Sensor Found!");
+  
+  // Configuring sensor 
+  byte ledBrightness = 60;  
+  byte sampleAverage = 8;  
+  byte ledMode = 2;         
+  byte sampleRate = 100;    
+  int pulseWidth = 411;     
+  int adcRange = 4096;      
 
-  delay(5000);  // 5 seconds
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+  particleSensor.setPulseAmplitudeRed(0x0A);  // Turn Red LED to low to indicate sensor is running
+  particleSensor.setPulseAmplitudeIR(0x1F);   // Adjust IR intensity for better heart rate detection
+  particleSensor.setPulseAmplitudeGreen(0);   // Turn off Green LED
+  
+  // Take an average of IR readings at power up for finger detection (from presence.ino)
+  unblockedValue = 0;
+  for (byte x = 0; x < 32; x++) {
+    unblockedValue += particleSensor.getIR();  // Read the IR value
+  }
+  unblockedValue /= 32;
+  
+  Serial.println("Initializing IMU sensor...");
+  if (qmi.begin(Wire, QMI8658_L_SLAVE_ADDRESS, IIC_SDA, IIC_SCL)) {
+    imuInitialized = true;
+    Serial.println("IMU initialized successfully");
+    
+    // Get chip id
+    Serial.print("IMU Chip ID: ");
+    Serial.println(qmi.getChipID());
+
+    // Configure accelerometer
+    
+    qmi.configAccelerometer(
+      SensorQMI8658::ACC_RANGE_4G,
+      SensorQMI8658::ACC_ODR_1000Hz,
+      SensorQMI8658::LPF_MODE_0,
+      true);
+
+    qmi.configGyroscope(
+      SensorQMI8658::GYR_RANGE_64DPS,
+      SensorQMI8658::GYR_ODR_896_8Hz,
+      SensorQMI8658::LPF_MODE_3,
+      true);
+ 
+    qmi.enableGyroscope();
+    qmi.enableAccelerometer();
+    
+    gfx->setCursor(10, 160);
+    gfx->setTextColor(GREEN);
+    gfx->println("IMU Ready!");
+  } else {
+    Serial.println("Failed to initialize IMU");
+    gfx->setCursor(10, 160);
+    gfx->setTextColor(RED);
+    gfx->println("IMU Error!");
+  }
+
+
+  // Initialize BLE
+  gfx->setCursor(10, 40);
+  gfx->println("Starting BLE...");
+  
+  // Create the BLE Device
+  BLEDevice::init(DEVICE_NAME);
+
+  // Create the BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE Characteristic
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ   |
+                      BLECharacteristic::PROPERTY_WRITE  |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+
+  pCharacteristic->setCallbacks(new MyCallbacks());
+  pCharacteristic->addDescriptor(new BLE2902());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);
+  BLEDevice::startAdvertising();
+  
+  gfx->setCursor(10, 70);
+  gfx->println("BLE Ready!");
+  gfx->setCursor(10, 100);
+  gfx->println("Place finger");
+  gfx->setCursor(10, 130);
+  gfx->println("on sensor");
+  
+  delay(1000);
 }
 
 void loop() {
-   long irValue = particleSensor.getIR();
-
-   USBSerial.print("IR Value: ");
-   USBSerial.println(irValue);
-
-  if (checkForBeat(irValue) == true)
-  {
-    //We sensed a beat!
-    long delta = millis() - lastBeat;
-    lastBeat = millis();
-
-    beatsPerMinute = 60 / (delta / 1000.0);
-
-    if (beatsPerMinute < 255 && beatsPerMinute > 20)
-    {
-      rates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
-      rateSpot %= RATE_SIZE; //Wrap variable
-
-      //Take average of readings
-      beatAvg = 0;
-      for (byte x = 0 ; x < RATE_SIZE ; x++)
-        beatAvg += rates[x];
-      beatAvg /= RATE_SIZE;
+  unsigned long currentMillis = millis();
+  
+  // Get the latest sensor readings
+  uint32_t red = particleSensor.getRed();
+  uint32_t ir = particleSensor.getIR();
+  
+  // Check finger presence (using presence.ino method)
+  long currentDelta = ir - unblockedValue;
+  previousFingerPresent = fingerPresent;
+  fingerPresent = (currentDelta > 50000);
+  
+  // Detect change in finger presence status
+  bool fingerStatusChanged = (previousFingerPresent != fingerPresent);
+  
+  // If finger was removed, immediately reset values and update display/send data
+  if (fingerStatusChanged && !fingerPresent) {
+    beatAvg = 0;
+    beatsPerMinute = 0;
+    validSPO2 = 0;
+    spo2 = 0;
+    
+    // Force immediate display update
+    lastDisplay = 0;
+    
+    // Send data immediately to report finger removed
+    if (deviceConnected) {
+      sendSensorData();
+    }
+  }
+  if (imuInitialized && (currentMillis - lastIMUCheck > 50)) {
+    lastIMUCheck = currentMillis;
+    
+    if (qmi.getDataReady()) {
+      // Read accelerometer data
+      if (qmi.getAccelerometer(acc.x, acc.y, acc.z)) {
+        Serial.print("ACCEL: x=");
+        Serial.print(acc.x);
+        Serial.print(", y=");
+        Serial.print(acc.y);
+        Serial.print(", z=");
+        Serial.println(acc.z);
+      }
+      
+      // Read gyroscope data
+      if (qmi.getGyroscope(gyr.x, gyr.y, gyr.z)) {
+        Serial.print("GYRO: x=");
+        Serial.print(gyr.x);
+        Serial.print(", y=");
+        Serial.print(gyr.y);
+        Serial.print(", z=");
+        Serial.println(gyr.z);
+      }
     }
   }
 
-  USBSerial.print("IR=");
-  USBSerial.print(irValue);
-  USBSerial.print(", BPM=");
-  USBSerial.print(beatsPerMinute);
-  USBSerial.print(", Avg BPM=");
-  USBSerial.print(beatAvg);
-  if (irValue < 50000)
-    USBSerial.print(" No finger?");
+  if (fingerPresent) {
+  // Debug IR signal values to troubleshoot
+  Serial.print("IR Signal: ");
+  Serial.print(ir);
+  Serial.print(", Delta: ");
+  Serial.println(ir - unblockedValue);
+  
+  // Combined heart rate and SpO2 processing as in SPO2.ino
+  if (!collectingSpo2 && (currentMillis - lastSpO2Check > 3000 || !initialSPO2Done)) {
+    // Start a new collection cycle
+    collectingSpo2 = true;
+    spo2Index = 0;
+    Serial.println("Starting sample collection for HR and SpO2");
+  }
+  
+  if (collectingSpo2) {
+    // Only process if sensor has new data AND it's been at least 5ms since last sample
+    if (particleSensor.available() && currentMillis - sampleTimestamp >= 5) {
+      sampleTimestamp = currentMillis;
+      
+      // Store the current sample
+      redBuffer[spo2Index] = particleSensor.getRed();
+      irBuffer[spo2Index] = particleSensor.getIR();
+      particleSensor.nextSample(); // Important: move to next sample
+      
+      spo2Index++;
+      
+      // Check if we've collected enough samples
+      if (spo2Index >= bufferLength) {
+        // Calculate both SpO2 and heart rate using Maxim algorithm
+        maxim_heart_rate_and_oxygen_saturation(
+          irBuffer, bufferLength, redBuffer, 
+          &spo2, &validSPO2, &heartRate, &validHeartRate
+        );
+        
+        // Process heart rate result from SpO2 algorithm
+        if (validHeartRate) {
+          // If the heart rate is valid, update our beatAvg
+          beatsPerMinute = heartRate;
+          
+          // Add to our rolling average
+          rates[rateSpot++] = (byte)beatsPerMinute;
+          rateSpot %= RATE_SIZE;
+          
+          // Calculate average
+          beatAvg = 0;
+          for (byte x = 0; x < RATE_SIZE; x++) {
+            beatAvg += rates[x];
+          }
+          beatAvg /= RATE_SIZE;
+          
+          Serial.print("Valid Heart Rate: ");
+          Serial.print(heartRate);
+          Serial.print(", Average: ");
+          Serial.println(beatAvg);
+        }
+        
+        // Constrain SpO2 to reasonable values
+        if (spo2 > 100) spo2 = 100;
+        
+        // Reset collection state
+        collectingSpo2 = false;
+        lastSpO2Check = currentMillis;
+        initialSPO2Done = true;
+      }
+    }
+  }
+  
+  // Note: This won't update beatAvg but gives immediate visual feedback
+  if (checkForBeat(ir)) {
+    // Flash indicator or update something on display
+    Serial.println("♥ Beat!");
+  }
+} else if (collectingSpo2) {
+  // If finger was removed during collection, cancel it
+  collectingSpo2 = false;
+  spo2Index = 0;
+  Serial.println("Collection canceled - finger removed");
+}
 
-  USBSerial.println();
-  gfx->setCursor(random(gfx->width()), random(gfx->height()));
-  gfx->setTextColor(random(0xffff), random(0xffff));
-  gfx->setTextSize(random(6) /* x scale */, random(6) /* y scale */, random(2) /* pixel_margin */);
-  gfx->println("Hello World!");
-
-  delay(1000);  // 1 second
+  
+  bool forceUpdate = fingerStatusChanged;
+  // Update display (every 250ms)
+  if (currentMillis - lastDisplay > 500 || fingerStatusChanged) {
+    lastDisplay = currentMillis;
+    gfx->fillScreen(BLACK);
+    
+    // Show readings
+    gfx->setCursor(10, 10);
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(2);
+    gfx->println("Health Monitor");
+    
+    // Show finger detection
+    gfx->setCursor(10, 50);
+    if (fingerPresent) {
+      gfx->setTextColor(GREEN);
+      gfx->println("FINGER DETECTED");
+    } else {
+      gfx->setTextColor(RED);
+      gfx->println("PLACE FINGER");
+    }
+    
+    // Show heart rate
+    gfx->setCursor(10, 90);
+    gfx->setTextColor(RED);
+    if (beatAvg > 0 && fingerPresent) {
+      gfx->print("HR: ");
+      gfx->print(beatAvg);
+      gfx->println(" BPM");
+    } else {
+      gfx->println("HR: --");
+    }
+    
+    // Show SpO2
+    gfx->setCursor(10, 130);
+    gfx->setTextColor(BLUE);
+    if (validSPO2 && fingerPresent) {
+      gfx->print("SpO2: ");
+      gfx->print(spo2);
+      gfx->println("%");
+    } else {
+      gfx->println("SpO2: --");
+    }
+    if (imuInitialized) {
+      // Move cursor down for IMU data
+      gfx->setCursor(10, 190);
+      gfx->setTextColor(YELLOW);
+      gfx->println("IMU Data:");
+      
+      // Accelerometer
+      gfx->setCursor(10, 210);
+      gfx->setTextSize(1); // Smaller text for IMU data
+      gfx->print("Acc: ");
+      gfx->print(acc.x, 1);
+      gfx->print(", ");
+      gfx->print(acc.y, 1);
+      gfx->print(", ");
+      gfx->println(acc.z, 1);
+      
+      // Gyroscope
+      gfx->setCursor(10, 225);
+      gfx->print("Gyr: ");
+      gfx->print(gyr.x, 1);
+      gfx->print(", ");
+      gfx->print(gyr.y, 1);
+      gfx->print(", ");
+      gfx->println(gyr.z, 1);
+      
+      // Return to normal text size
+      gfx->setTextSize(2);
+    }
+    // Display BLE connection status
+    gfx->setCursor(10, 170);
+    if (deviceConnected) {
+      gfx->setTextColor(GREEN);
+      gfx->println("BLE: Connected");
+    } else {
+      gfx->setTextColor(BLUE);
+      gfx->println("BLE: Advertising");
+    }
+    
+    // Show emergency alert if active
+    if (emergencyButton) {
+      gfx->setCursor(10, 210);
+      gfx->setTextColor(RED);
+      gfx->println("EMERGENCY ALERT!");
+    }
+  }
+  
+  // Send data via BLE every 500ms when connected
+  if (deviceConnected && (currentMillis - lastBLEUpdate > 500 || fingerStatusChanged)) {
+    lastBLEUpdate = currentMillis;
+    
+    // Check for emergency condition
+    // Example: SpO2 too low or heart rate outside normal range
+    if (validSPO2 && spo2 < 90 && fingerPresent) {
+      emergencyButton = true;
+    }
+    
+    if (beatAvg > 120 || (beatAvg < 50 && beatAvg > 0 && fingerPresent)) {
+      emergencyButton = true;
+    }
+    
+    // Send all data in one JSON message
+    sendSensorData();
+  }
+  
+  // Handle BLE connection changes
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500);
+    pServer->startAdvertising();
+    Serial.println("Start advertising");
+    oldDeviceConnected = deviceConnected;
+  }
+  
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
+  }
 }
