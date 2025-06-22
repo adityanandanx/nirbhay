@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sms_advanced/sms_advanced.dart';
 import 'dart:convert';
 import '../models/emergency_contact.dart';
 import 'ble_provider.dart';
@@ -223,10 +224,10 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     try {
       // Make direct call to topmost priority emergency contact first
       // but only if emergency alerts are enabled
-      if (state.emergencyContacts.isNotEmpty &&
-          settings.emergencyAlertsEnabled) {
-        await _callTopPriorityContact();
-      }
+      // if (state.emergencyContacts.isNotEmpty &&
+      //     settings.emergencyAlertsEnabled) {
+      //   await _callTopPriorityContact();
+      // }
 
       // Send SMS to emergency contacts if enabled and contacts exist
       if (state.emergencyContacts.isNotEmpty) {
@@ -267,7 +268,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     final emergencyMessage = '''
 🚨 EMERGENCY ALERT 🚨
 
-${state.emergencyContacts.length > 1 ? 'This is an automated emergency alert from Nirbhay Safety App.' : 'This is an automated emergency alert.'}
+This is an automated emergency alert from Nirbhay Safety App.
 
 Time: ${DateTime.now().toString()}
 $locationText
@@ -277,12 +278,68 @@ Please check on the user immediately or contact emergency services.
 - Sent by Nirbhay Safety System
 ''';
 
-    // TODO: Implement actual SMS sending
-    // This would use a service like Twilio, AWS SNS, or native SMS
-    debugPrint(
-      'Emergency SMS would be sent to: ${state.emergencyContacts.map((c) => c.name).join(', ')}',
-    );
-    debugPrint('Message: $emergencyMessage');
+    try {
+      final SmsSender sender = SmsSender();
+      final activeContacts =
+          state.emergencyContacts.where((c) => c.isActive).toList();
+
+      List<String> successfulSends = [];
+      List<String> failedSends = [];
+
+      for (final contact in activeContacts) {
+        try {
+          debugPrint(
+            '📱 Sending emergency SMS to ${contact.name} (${contact.phone})',
+          );
+
+          final SmsMessage message = SmsMessage(
+            contact.phone,
+            emergencyMessage,
+          );
+          await sender.sendSms(message);
+
+          successfulSends.add(contact.name);
+          debugPrint('✅ Emergency SMS sent successfully to ${contact.name}');
+
+          // Log the successful SMS if data backup is enabled
+          final settings = _settingsNotifier.state;
+          if (settings.dataBackupEnabled) {
+            await _logEmergencySMS(contact, true);
+          }
+        } catch (e) {
+          failedSends.add(contact.name);
+          debugPrint('❌ Failed to send emergency SMS to ${contact.name}: $e');
+
+          // Log the failure if data backup is enabled
+          final settings = _settingsNotifier.state;
+          if (settings.dataBackupEnabled) {
+            await _logEmergencySMS(contact, false, error: e.toString());
+          }
+        }
+      }
+
+      // Update state with SMS sending results
+      if (failedSends.isNotEmpty && successfulSends.isEmpty) {
+        state = state.copyWith(
+          error:
+              'Failed to send emergency SMS to all contacts: ${failedSends.join(', ')}',
+        );
+      } else if (failedSends.isNotEmpty) {
+        state = state.copyWith(
+          error:
+              'Emergency SMS sent to ${successfulSends.join(', ')}, but failed for ${failedSends.join(', ')}',
+        );
+      } else {
+        debugPrint(
+          '✅ Emergency SMS sent successfully to all active contacts: ${successfulSends.join(', ')}',
+        );
+      }
+    } catch (e) {
+      debugPrint('🚨 Critical error during emergency SMS sending: $e');
+      state = state.copyWith(
+        error: 'Critical failure sending emergency SMS: ${e.toString()}',
+      );
+    }
   }
 
   Future<void> _sendEmergencyPushNotifications() async {
@@ -362,11 +419,70 @@ The user is now safe.
 - Sent by Nirbhay Safety System
 ''';
 
-    // TODO: Implement actual SMS sending
-    debugPrint(
-      'Emergency cancellation SMS would be sent to: ${state.emergencyContacts.map((c) => c.name).join(', ')}',
-    );
-    debugPrint('Message: $cancellationMessage');
+    try {
+      final SmsSender sender = SmsSender();
+      final activeContacts =
+          state.emergencyContacts.where((c) => c.isActive).toList();
+
+      List<String> successfulSends = [];
+      List<String> failedSends = [];
+
+      for (final contact in activeContacts) {
+        try {
+          debugPrint(
+            '📱 Sending emergency cancellation SMS to ${contact.name} (${contact.phone})',
+          );
+
+          final SmsMessage message = SmsMessage(
+            contact.phone,
+            cancellationMessage,
+          );
+          await sender.sendSms(message);
+
+          successfulSends.add(contact.name);
+          debugPrint(
+            '✅ Emergency cancellation SMS sent successfully to ${contact.name}',
+          );
+
+          // Log the successful SMS if data backup is enabled
+          final settings = _settingsNotifier.state;
+          if (settings.dataBackupEnabled) {
+            await _logEmergencyCancellationSMS(contact, true);
+          }
+        } catch (e) {
+          failedSends.add(contact.name);
+          debugPrint(
+            '❌ Failed to send emergency cancellation SMS to ${contact.name}: $e',
+          );
+
+          // Log the failure if data backup is enabled
+          final settings = _settingsNotifier.state;
+          if (settings.dataBackupEnabled) {
+            await _logEmergencyCancellationSMS(
+              contact,
+              false,
+              error: e.toString(),
+            );
+          }
+        }
+      }
+
+      // Log results
+      if (successfulSends.isNotEmpty) {
+        debugPrint(
+          '✅ Emergency cancellation SMS sent successfully to: ${successfulSends.join(', ')}',
+        );
+      }
+      if (failedSends.isNotEmpty) {
+        debugPrint(
+          '❌ Failed to send emergency cancellation SMS to: ${failedSends.join(', ')}',
+        );
+      }
+    } catch (e) {
+      debugPrint(
+        '🚨 Critical error during emergency cancellation SMS sending: $e',
+      );
+    }
   }
 
   Future<void> _logEmergencyCancellation() async {
@@ -667,6 +783,44 @@ The user is now safe.
     debugPrint('Emergency call logged: $callLog');
   }
 
+  Future<void> _logEmergencySMS(
+    EmergencyContact contact,
+    bool success, {
+    String? error,
+  }) async {
+    final smsLog = {
+      'timestamp': DateTime.now().toIso8601String(),
+      'contact_id': contact.id,
+      'contact_name': contact.name,
+      'contact_phone': contact.phone,
+      'contact_relationship': contact.relationship,
+      'sms_successful': success,
+      'sms_type': 'emergency_alert',
+      if (error != null) 'error': error,
+    };
+
+    debugPrint('Emergency SMS logged: $smsLog');
+  }
+
+  Future<void> _logEmergencyCancellationSMS(
+    EmergencyContact contact,
+    bool success, {
+    String? error,
+  }) async {
+    final smsLog = {
+      'timestamp': DateTime.now().toIso8601String(),
+      'contact_id': contact.id,
+      'contact_name': contact.name,
+      'contact_phone': contact.phone,
+      'contact_relationship': contact.relationship,
+      'sms_successful': success,
+      'sms_type': 'emergency_cancellation',
+      if (error != null) 'error': error,
+    };
+
+    debugPrint('Emergency cancellation SMS logged: $smsLog');
+  }
+
   /// Validates if a phone number has a basic valid format
   /// This is a simple validation - you might want to use a more robust solution
   bool _isValidPhoneNumber(String phoneNumber) {
@@ -713,5 +867,93 @@ The user is now safe.
 
     state = state.copyWith(emergencyContacts: defaultContacts);
     _saveEmergencyContacts();
+  }
+
+  /// Send a custom SMS to all active emergency contacts
+  Future<bool> sendCustomSMSToEmergencyContacts(String message) async {
+    try {
+      final SmsSender sender = SmsSender();
+      final activeContacts =
+          state.emergencyContacts.where((c) => c.isActive).toList();
+
+      if (activeContacts.isEmpty) {
+        debugPrint('❌ No active emergency contacts to send SMS to');
+        state = state.copyWith(
+          error: 'No active emergency contacts configured for SMS sending.',
+        );
+        return false;
+      }
+
+      List<String> successfulSends = [];
+      List<String> failedSends = [];
+
+      for (final contact in activeContacts) {
+        try {
+          debugPrint(
+            '📱 Sending custom SMS to ${contact.name} (${contact.phone})',
+          );
+
+          final SmsMessage smsMessage = SmsMessage(contact.phone, message);
+          await sender.sendSms(smsMessage);
+
+          successfulSends.add(contact.name);
+          debugPrint('✅ Custom SMS sent successfully to ${contact.name}');
+        } catch (e) {
+          failedSends.add(contact.name);
+          debugPrint('❌ Failed to send custom SMS to ${contact.name}: $e');
+        }
+      }
+
+      // Log results
+      if (successfulSends.isNotEmpty) {
+        debugPrint(
+          '✅ Custom SMS sent successfully to: ${successfulSends.join(', ')}',
+        );
+      }
+      if (failedSends.isNotEmpty) {
+        debugPrint('❌ Failed to send custom SMS to: ${failedSends.join(', ')}');
+        state = state.copyWith(
+          error:
+              'SMS sent to ${successfulSends.join(', ')}, but failed for ${failedSends.join(', ')}',
+        );
+      }
+
+      return failedSends.isEmpty;
+    } catch (e) {
+      debugPrint('🚨 Critical error during custom SMS sending: $e');
+      state = state.copyWith(error: 'Failed to send SMS: ${e.toString()}');
+      return false;
+    }
+  }
+
+  /// Send SMS to a specific emergency contact
+  Future<bool> sendSMSToContact(String contactId, String message) async {
+    try {
+      final contact = state.emergencyContacts.firstWhere(
+        (c) => c.id == contactId,
+        orElse: () => throw Exception('Contact not found'),
+      );
+
+      if (!contact.isActive) {
+        debugPrint('❌ Cannot send SMS to inactive contact: ${contact.name}');
+        state = state.copyWith(
+          error: 'Cannot send SMS to inactive contact: ${contact.name}',
+        );
+        return false;
+      }
+
+      final SmsSender sender = SmsSender();
+      debugPrint('📱 Sending SMS to ${contact.name} (${contact.phone})');
+
+      final SmsMessage smsMessage = SmsMessage(contact.phone, message);
+      await sender.sendSms(smsMessage);
+
+      debugPrint('✅ SMS sent successfully to ${contact.name}');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Failed to send SMS: $e');
+      state = state.copyWith(error: 'Failed to send SMS: ${e.toString()}');
+      return false;
+    }
   }
 }
