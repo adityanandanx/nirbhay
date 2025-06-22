@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'ble_provider.dart';
@@ -55,11 +56,43 @@ class SafetyState {
 
 // Safety State Notifier
 class SafetyStateNotifier extends StateNotifier<SafetyState> {
-  SafetyStateNotifier(this._bleStateNotifier) : super(const SafetyState());
+  SafetyStateNotifier(this._bleStateNotifier) : super(const SafetyState()) {
+    _init();
+  }
 
   final BLEStateNotifier _bleStateNotifier;
+  StreamSubscription<BLEState>? _bleStateSubscription;
+
+  void _init() {
+    // Listen to BLE state changes to automatically disable safety mode on disconnect
+    _bleStateSubscription = _bleStateNotifier.stream.listen((bleState) {
+      // If safety mode is active but device disconnected, disable it
+      if (state.isSafetyModeActive && !bleState.isConnected) {
+        state = state.copyWith(
+          isSafetyModeActive: false,
+          error: 'Safety mode disabled: Wearable device disconnected',
+        );
+        _stopLocationTracking();
+      }
+    });
+  }
+
+  // Helper method to check if safety mode can be activated
+  bool get canActivateSafetyMode {
+    return _bleStateNotifier.mounted && _bleStateNotifier.state.isConnected;
+  }
 
   Future<void> toggleSafetyMode() async {
+    // Check if BLE device is connected first
+    if (!_bleStateNotifier.mounted || !_bleStateNotifier.state.isConnected) {
+      state = state.copyWith(
+        isLoading: false,
+        error:
+            'Cannot activate safety mode: No wearable device connected. Please connect your device first.',
+      );
+      return;
+    }
+
     final newState = !state.isSafetyModeActive;
     state = state.copyWith(isSafetyModeActive: newState, isLoading: true);
 
@@ -200,5 +233,11 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
 
   void clearError() {
     state = state.copyWith(error: null);
+  }
+
+  @override
+  void dispose() {
+    _bleStateSubscription?.cancel();
+    super.dispose();
   }
 }

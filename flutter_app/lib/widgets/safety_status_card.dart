@@ -8,6 +8,23 @@ class SafetyStatusCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final safetyState = ref.watch(safetyStateProvider);
+    final bleState = ref.watch(bleStateProvider);
+    final canActivate = bleState.isConnected;
+
+    // Show error message if there's an error
+    if (safetyState.error != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(safetyState.error!),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        // Clear the error after showing it
+        ref.read(safetyStateProvider.notifier).clearError();
+      });
+    }
 
     return Container(
       width: double.infinity,
@@ -55,7 +72,9 @@ class SafetyStatusCard extends ConsumerWidget {
           Text(
             safetyState.isSafetyModeActive
                 ? 'You are protected and monitored'
-                : 'Tap to activate protection',
+                : canActivate
+                ? 'Tap to activate protection'
+                : 'Connect wearable device to activate',
             style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 20),
@@ -63,10 +82,12 @@ class SafetyStatusCard extends ConsumerWidget {
             onPressed:
                 safetyState.isLoading
                     ? null
-                    : () =>
+                    : (safetyState.isSafetyModeActive || canActivate)
+                    ? () =>
                         ref
                             .read(safetyStateProvider.notifier)
-                            .toggleSafetyMode(),
+                            .toggleSafetyMode()
+                    : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor:
@@ -86,7 +107,9 @@ class SafetyStatusCard extends ConsumerWidget {
                     : Text(
                       safetyState.isSafetyModeActive
                           ? 'Deactivate'
-                          : 'Activate',
+                          : canActivate
+                          ? 'Activate'
+                          : 'Device Required',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,

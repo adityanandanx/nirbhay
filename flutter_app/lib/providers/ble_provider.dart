@@ -171,6 +171,15 @@ class BLEStateNotifier extends StateNotifier<BLEState> {
   }
 
   Future<void> setSafetyMode(bool enabled) async {
+    // Check if device is connected before attempting to set safety mode
+    if (!state.isConnected) {
+      state = state.copyWith(
+        error:
+            'Cannot set safety mode: No device connected. Please connect your wearable device first.',
+      );
+      return;
+    }
+
     try {
       await _bleService.setSafetyMode(enabled);
     } catch (e) {
