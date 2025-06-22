@@ -47,10 +47,15 @@ class BLEService {
         ].request();
 
     bool allGranted = statuses.values.every(
-      (status) =>
-          status == PermissionStatus.granted ||
-          status == PermissionStatus.permanentlyDenied,
+      (status) => status == PermissionStatus.granted,
     );
+
+    if (!allGranted) {
+      debugPrint("Some BLE permissions were denied");
+      for (var entry in statuses.entries) {
+        debugPrint("${entry.key}: ${entry.value}");
+      }
+    }
 
     return allGranted;
   }

@@ -1,58 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import '../services/ble_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/app_providers.dart';
+import '../providers/ble_provider.dart';
 
-class BLEConnectionScreen extends StatefulWidget {
+class BLEConnectionScreen extends ConsumerStatefulWidget {
   const BLEConnectionScreen({super.key});
 
   @override
-  State<BLEConnectionScreen> createState() => _BLEConnectionScreenState();
+  ConsumerState<BLEConnectionScreen> createState() =>
+      _BLEConnectionScreenState();
 }
 
-class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
-  final BLEService _bleService = BLEService();
+class _BLEConnectionScreenState extends ConsumerState<BLEConnectionScreen> {
   List<BluetoothDevice> _foundDevices = [];
   bool _isScanning = false;
   bool _isConnecting = false;
-  BluetoothConnectionState _connectionState =
-      BluetoothConnectionState.disconnected;
-  Map<String, dynamic>? _lastReceivedData;
+  bool _isShowingErrorDialog = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeBLE();
-    _listenToConnectionState();
-    _listenToDataStream();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeBLE();
+    });
   }
 
   void _initializeBLE() async {
-    bool initialized = await _bleService.initialize();
-    if (!initialized) {
-      _showErrorDialog(
-        "Bluetooth initialization failed. Please check permissions and Bluetooth settings.",
-      );
+    try {
+      await ref.read(bleStateProvider.notifier).initialize();
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog(
+          "Bluetooth initialization failed. Please check permissions and Bluetooth settings.",
+        );
+      }
     }
-  }
-
-  void _listenToConnectionState() {
-    _bleService.connectionState.listen((state) {
-      setState(() {
-        _connectionState = state;
-      });
-    });
-  }
-
-  void _listenToDataStream() {
-    _bleService.dataStream.listen((data) {
-      setState(() {
-        _lastReceivedData = data;
-      });
-    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final bleState = ref.watch(bleStateProvider);
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -73,14 +62,14 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Connection Status Card
-            _buildConnectionStatusCard(),
+            _buildConnectionStatusCard(bleState),
             const SizedBox(height: 24),
 
             // Device Data Card (if connected)
-            if (_bleService.isConnected && _lastReceivedData != null)
-              _buildDataCard(),
+            if (bleState.isConnected && bleState.sensorData != null)
+              _buildDataCard(bleState.sensorData!),
 
-            if (_bleService.isConnected && _lastReceivedData != null)
+            if (bleState.isConnected && bleState.sensorData != null)
               const SizedBox(height: 24),
 
             // Scan Section
@@ -126,26 +115,26 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
                         itemCount: _foundDevices.length,
                         itemBuilder: (context, index) {
                           final device = _foundDevices[index];
-                          return _buildDeviceCard(device);
+                          return _buildDeviceCard(device, bleState);
                         },
                       ),
             ),
 
             // Control Buttons (if connected)
-            if (_bleService.isConnected) _buildControlButtons(),
+            if (bleState.isConnected) _buildControlButtons(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildConnectionStatusCard() {
+  Widget _buildConnectionStatusCard(BLEState bleState) {
     MaterialColor statusColor;
     IconData statusIcon;
     String statusText;
     String statusDescription;
 
-    switch (_connectionState) {
+    switch (bleState.connectionState) {
       case BluetoothConnectionState.connected:
         statusColor = Colors.green;
         statusIcon = Icons.check_circle;
@@ -194,11 +183,10 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
             style: const TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
-          if (_bleService.isConnected &&
-              _bleService.connectedDevice != null) ...[
+          if (bleState.isConnected && bleState.connectedDevice != null) ...[
             const SizedBox(height: 12),
             Text(
-              'Device: ${_bleService.connectedDevice!.platformName}',
+              'Device: ${bleState.connectedDevice!.platformName}',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -211,7 +199,7 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
     );
   }
 
-  Widget _buildDataCard() {
+  Widget _buildDataCard(Map<String, dynamic> sensorData) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -240,7 +228,7 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          ..._lastReceivedData!.entries
+          ...sensorData.entries
               .map(
                 (entry) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -271,8 +259,8 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
     );
   }
 
-  Widget _buildDeviceCard(BluetoothDevice device) {
-    bool isConnected = _bleService.connectedDevice?.remoteId == device.remoteId;
+  Widget _buildDeviceCard(BluetoothDevice device, BLEState bleState) {
+    bool isConnected = bleState.connectedDevice?.remoteId == device.remoteId;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -413,7 +401,11 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
           children: [
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: () => _bleService.sendEmergencyAlert(),
+                onPressed:
+                    () =>
+                        ref
+                            .read(bleStateProvider.notifier)
+                            .sendEmergencyAlert(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -429,7 +421,11 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: () => _bleService.requestDeviceStatus(),
+                onPressed:
+                    () =>
+                        ref
+                            .read(bleStateProvider.notifier)
+                            .requestDeviceStatus(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
@@ -455,16 +451,42 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
     });
 
     try {
-      List<BluetoothDevice> devices = await _bleService.startScan();
+      await ref.read(bleStateProvider.notifier).startScanning();
+      final bleState = ref.read(bleStateProvider);
       setState(() {
-        _foundDevices = devices;
+        _foundDevices = bleState.availableDevices;
         _isScanning = false;
       });
+
+      // Only show a subtle message if no devices found, not an error dialog
+      if (bleState.availableDevices.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No devices found. Make sure your device is on and in pairing mode.',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _isScanning = false;
       });
-      _showErrorDialog("Scan failed: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Scan failed: $e"),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _startScan,
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -473,22 +495,53 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
       _isConnecting = true;
     });
 
-    bool success = await _bleService.connectToDevice(device);
+    try {
+      await ref.read(bleStateProvider.notifier).connectToDevice(device);
+      setState(() {
+        _isConnecting = false;
+      });
 
-    setState(() {
-      _isConnecting = false;
-    });
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully connected to ${device.platformName}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isConnecting = false;
+      });
 
-    if (!success) {
-      _showErrorDialog("Failed to connect to ${device.platformName}");
+      // Show connection error as snackbar instead of dialog
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to connect to ${device.platformName}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () => _connect(device),
+            ),
+          ),
+        );
+      }
     }
   }
 
   void _disconnect() async {
-    await _bleService.disconnect();
+    await ref.read(bleStateProvider.notifier).disconnect();
   }
 
   void _showErrorDialog(String message) {
+    if (_isShowingErrorDialog || !mounted) return;
+
+    _isShowingErrorDialog = true;
     showDialog(
       context: context,
       builder:
@@ -497,12 +550,17 @@ class _BLEConnectionScreenState extends State<BLEConnectionScreen> {
             content: Text(message),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _isShowingErrorDialog = false;
+                },
                 child: const Text('OK'),
               ),
             ],
           ),
-    );
+    ).then((_) {
+      _isShowingErrorDialog = false;
+    });
   }
 
   @override
