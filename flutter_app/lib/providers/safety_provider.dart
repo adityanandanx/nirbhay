@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sms_advanced/sms_advanced.dart';
+import 'package:another_telephony/telephony.dart';
 import 'dart:convert';
 import '../models/emergency_contact.dart';
 import 'ble_provider.dart';
@@ -70,6 +70,10 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
 
   final BLEStateNotifier _bleStateNotifier;
   final SettingsStateNotifier _settingsNotifier;
+
+  /// SMS service for sending emergency and cancellation messages
+  /// Requires SEND_SMS permission in AndroidManifest.xml
+  final Telephony _telephony = Telephony.instance;
   StreamSubscription<BLEState>? _bleStateSubscription;
 
   void _init() async {
@@ -80,6 +84,9 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     if (state.emergencyContacts.isEmpty) {
       _addDefaultContacts();
     }
+
+    // Check SMS permissions on initialization
+    await _checkSmsPermissions();
 
     // Listen to BLE state changes for sensor data and connection status
     _bleStateSubscription = _bleStateNotifier.stream.listen((bleState) {
@@ -268,7 +275,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     final emergencyMessage = '''
 🚨 EMERGENCY ALERT 🚨
 
-This is an automated emergency alert from Nirbhay Safety App.
+${state.emergencyContacts.length > 1 ? 'This is an automated emergency alert from Nirbhay Safety App.' : 'This is an automated emergency alert.'}
 
 Time: ${DateTime.now().toString()}
 $locationText
@@ -279,65 +286,62 @@ Please check on the user immediately or contact emergency services.
 ''';
 
     try {
-      final SmsSender sender = SmsSender();
-      final activeContacts =
-          state.emergencyContacts.where((c) => c.isActive).toList();
+      // Request SMS permissions
+      bool permissionsGranted =
+          await _telephony.requestPhoneAndSmsPermissions ?? false;
 
-      List<String> successfulSends = [];
-      List<String> failedSends = [];
+      if (!permissionsGranted) {
+        debugPrint('❌ SMS permissions not granted');
+        state = state.copyWith(
+          error:
+              'SMS permissions required to send emergency alerts. Please grant permissions in settings.',
+        );
+        return;
+      }
+
+      // Send SMS to all active emergency contacts
+      final activeContacts =
+          state.emergencyContacts.where((contact) => contact.isActive).toList();
+
+      if (activeContacts.isEmpty) {
+        debugPrint('❌ No active emergency contacts for SMS');
+        return;
+      }
 
       for (final contact in activeContacts) {
         try {
           debugPrint(
-            '📱 Sending emergency SMS to ${contact.name} (${contact.phone})',
+            '📱 Sending emergency SMS to: ${contact.name} (${contact.phone})',
+          );
+          await _telephony.sendSms(
+            to: contact.phone,
+            message: emergencyMessage,
+            isMultipart: true,
+            statusListener: (SendStatus status) {
+              switch (status) {
+                case SendStatus.SENT:
+                  debugPrint('✅ SMS sent successfully to ${contact.name}');
+                  break;
+                case SendStatus.DELIVERED:
+                  debugPrint('✅ SMS delivered to ${contact.name}');
+                  break;
+              }
+            },
           );
 
-          final SmsMessage message = SmsMessage(
-            contact.phone,
-            emergencyMessage,
-          );
-          await sender.sendSms(message);
-
-          successfulSends.add(contact.name);
-          debugPrint('✅ Emergency SMS sent successfully to ${contact.name}');
-
-          // Log the successful SMS if data backup is enabled
-          final settings = _settingsNotifier.state;
-          if (settings.dataBackupEnabled) {
-            await _logEmergencySMS(contact, true);
-          }
+          // Small delay between messages to avoid spam detection
+          await Future.delayed(const Duration(milliseconds: 500));
         } catch (e) {
-          failedSends.add(contact.name);
-          debugPrint('❌ Failed to send emergency SMS to ${contact.name}: $e');
-
-          // Log the failure if data backup is enabled
-          final settings = _settingsNotifier.state;
-          if (settings.dataBackupEnabled) {
-            await _logEmergencySMS(contact, false, error: e.toString());
-          }
+          debugPrint('❌ Failed to send SMS to ${contact.name}: $e');
+          // Continue sending to other contacts even if one fails
         }
       }
 
-      // Update state with SMS sending results
-      if (failedSends.isNotEmpty && successfulSends.isEmpty) {
-        state = state.copyWith(
-          error:
-              'Failed to send emergency SMS to all contacts: ${failedSends.join(', ')}',
-        );
-      } else if (failedSends.isNotEmpty) {
-        state = state.copyWith(
-          error:
-              'Emergency SMS sent to ${successfulSends.join(', ')}, but failed for ${failedSends.join(', ')}',
-        );
-      } else {
-        debugPrint(
-          '✅ Emergency SMS sent successfully to all active contacts: ${successfulSends.join(', ')}',
-        );
-      }
+      debugPrint('📱 Emergency SMS sending completed');
     } catch (e) {
-      debugPrint('🚨 Critical error during emergency SMS sending: $e');
+      debugPrint('❌ Emergency SMS sending failed: $e');
       state = state.copyWith(
-        error: 'Critical failure sending emergency SMS: ${e.toString()}',
+        error: 'Failed to send emergency SMS: ${e.toString()}',
       );
     }
   }
@@ -420,68 +424,61 @@ The user is now safe.
 ''';
 
     try {
-      final SmsSender sender = SmsSender();
-      final activeContacts =
-          state.emergencyContacts.where((c) => c.isActive).toList();
+      // Check if SMS permissions are available
+      bool permissionsGranted =
+          await _telephony.requestPhoneAndSmsPermissions ?? false;
 
-      List<String> successfulSends = [];
-      List<String> failedSends = [];
+      if (!permissionsGranted) {
+        debugPrint('❌ SMS permissions not granted for cancellation');
+        return;
+      }
+
+      // Send cancellation SMS to all active emergency contacts
+      final activeContacts =
+          state.emergencyContacts.where((contact) => contact.isActive).toList();
+
+      if (activeContacts.isEmpty) {
+        debugPrint('❌ No active emergency contacts for cancellation SMS');
+        return;
+      }
 
       for (final contact in activeContacts) {
         try {
           debugPrint(
-            '📱 Sending emergency cancellation SMS to ${contact.name} (${contact.phone})',
+            '📱 Sending cancellation SMS to: ${contact.name} (${contact.phone})',
           );
 
-          final SmsMessage message = SmsMessage(
-            contact.phone,
-            cancellationMessage,
+          await _telephony.sendSms(
+            to: contact.phone,
+            message: cancellationMessage,
+            isMultipart: true,
+            statusListener: (SendStatus status) {
+              switch (status) {
+                case SendStatus.SENT:
+                  debugPrint(
+                    '✅ Cancellation SMS sent successfully to ${contact.name}',
+                  );
+                  break;
+                case SendStatus.DELIVERED:
+                  debugPrint('✅ Cancellation SMS delivered to ${contact.name}');
+                  break;
+              }
+            },
           );
-          await sender.sendSms(message);
 
-          successfulSends.add(contact.name);
-          debugPrint(
-            '✅ Emergency cancellation SMS sent successfully to ${contact.name}',
-          );
-
-          // Log the successful SMS if data backup is enabled
-          final settings = _settingsNotifier.state;
-          if (settings.dataBackupEnabled) {
-            await _logEmergencyCancellationSMS(contact, true);
-          }
+          // Small delay between messages
+          await Future.delayed(const Duration(milliseconds: 500));
         } catch (e) {
-          failedSends.add(contact.name);
           debugPrint(
-            '❌ Failed to send emergency cancellation SMS to ${contact.name}: $e',
+            '❌ Failed to send cancellation SMS to ${contact.name}: $e',
           );
-
-          // Log the failure if data backup is enabled
-          final settings = _settingsNotifier.state;
-          if (settings.dataBackupEnabled) {
-            await _logEmergencyCancellationSMS(
-              contact,
-              false,
-              error: e.toString(),
-            );
-          }
+          // Continue sending to other contacts even if one fails
         }
       }
 
-      // Log results
-      if (successfulSends.isNotEmpty) {
-        debugPrint(
-          '✅ Emergency cancellation SMS sent successfully to: ${successfulSends.join(', ')}',
-        );
-      }
-      if (failedSends.isNotEmpty) {
-        debugPrint(
-          '❌ Failed to send emergency cancellation SMS to: ${failedSends.join(', ')}',
-        );
-      }
+      debugPrint('📱 Emergency cancellation SMS sending completed');
     } catch (e) {
-      debugPrint(
-        '🚨 Critical error during emergency cancellation SMS sending: $e',
-      );
+      debugPrint('❌ Emergency cancellation SMS sending failed: $e');
     }
   }
 
@@ -783,44 +780,6 @@ The user is now safe.
     debugPrint('Emergency call logged: $callLog');
   }
 
-  Future<void> _logEmergencySMS(
-    EmergencyContact contact,
-    bool success, {
-    String? error,
-  }) async {
-    final smsLog = {
-      'timestamp': DateTime.now().toIso8601String(),
-      'contact_id': contact.id,
-      'contact_name': contact.name,
-      'contact_phone': contact.phone,
-      'contact_relationship': contact.relationship,
-      'sms_successful': success,
-      'sms_type': 'emergency_alert',
-      if (error != null) 'error': error,
-    };
-
-    debugPrint('Emergency SMS logged: $smsLog');
-  }
-
-  Future<void> _logEmergencyCancellationSMS(
-    EmergencyContact contact,
-    bool success, {
-    String? error,
-  }) async {
-    final smsLog = {
-      'timestamp': DateTime.now().toIso8601String(),
-      'contact_id': contact.id,
-      'contact_name': contact.name,
-      'contact_phone': contact.phone,
-      'contact_relationship': contact.relationship,
-      'sms_successful': success,
-      'sms_type': 'emergency_cancellation',
-      if (error != null) 'error': error,
-    };
-
-    debugPrint('Emergency cancellation SMS logged: $smsLog');
-  }
-
   /// Validates if a phone number has a basic valid format
   /// This is a simple validation - you might want to use a more robust solution
   bool _isValidPhoneNumber(String phoneNumber) {
@@ -869,90 +828,115 @@ The user is now safe.
     _saveEmergencyContacts();
   }
 
-  /// Send a custom SMS to all active emergency contacts
-  Future<bool> sendCustomSMSToEmergencyContacts(String message) async {
+  Future<void> _checkSmsPermissions() async {
     try {
-      final SmsSender sender = SmsSender();
-      final activeContacts =
-          state.emergencyContacts.where((c) => c.isActive).toList();
+      bool permissionsGranted =
+          await _telephony.requestPhoneAndSmsPermissions ?? false;
 
-      if (activeContacts.isEmpty) {
-        debugPrint('❌ No active emergency contacts to send SMS to');
-        state = state.copyWith(
-          error: 'No active emergency contacts configured for SMS sending.',
-        );
-        return false;
-      }
-
-      List<String> successfulSends = [];
-      List<String> failedSends = [];
-
-      for (final contact in activeContacts) {
-        try {
-          debugPrint(
-            '📱 Sending custom SMS to ${contact.name} (${contact.phone})',
-          );
-
-          final SmsMessage smsMessage = SmsMessage(contact.phone, message);
-          await sender.sendSms(smsMessage);
-
-          successfulSends.add(contact.name);
-          debugPrint('✅ Custom SMS sent successfully to ${contact.name}');
-        } catch (e) {
-          failedSends.add(contact.name);
-          debugPrint('❌ Failed to send custom SMS to ${contact.name}: $e');
-        }
-      }
-
-      // Log results
-      if (successfulSends.isNotEmpty) {
+      if (!permissionsGranted) {
         debugPrint(
-          '✅ Custom SMS sent successfully to: ${successfulSends.join(', ')}',
+          '⚠️ SMS permissions not granted. Emergency SMS may not work.',
         );
-      }
-      if (failedSends.isNotEmpty) {
-        debugPrint('❌ Failed to send custom SMS to: ${failedSends.join(', ')}');
         state = state.copyWith(
           error:
-              'SMS sent to ${successfulSends.join(', ')}, but failed for ${failedSends.join(', ')}',
+              'SMS permissions required for emergency alerts. Grant permissions in app settings.',
+        );
+      } else {
+        debugPrint('✅ SMS permissions granted');
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking SMS permissions: $e');
+    }
+  }
+
+  /// Request SMS permissions manually (can be called from UI)
+  Future<bool> requestSmsPermissions() async {
+    try {
+      bool permissionsGranted =
+          await _telephony.requestPhoneAndSmsPermissions ?? false;
+
+      if (permissionsGranted) {
+        // Clear any permission-related errors
+        if (state.error != null && state.error!.contains('SMS permissions')) {
+          state = state.copyWith(error: null);
+        }
+        debugPrint('✅ SMS permissions granted by user');
+      } else {
+        debugPrint('❌ SMS permissions denied by user');
+        state = state.copyWith(
+          error: 'SMS permissions denied. Emergency SMS alerts will not work.',
         );
       }
 
-      return failedSends.isEmpty;
+      return permissionsGranted;
     } catch (e) {
-      debugPrint('🚨 Critical error during custom SMS sending: $e');
-      state = state.copyWith(error: 'Failed to send SMS: ${e.toString()}');
+      debugPrint('❌ Error requesting SMS permissions: $e');
+      state = state.copyWith(
+        error: 'Failed to request SMS permissions: ${e.toString()}',
+      );
       return false;
     }
   }
 
-  /// Send SMS to a specific emergency contact
-  Future<bool> sendSMSToContact(String contactId, String message) async {
+  /// Check if SMS permissions are currently granted
+  Future<bool> get hasSmsPermissions async {
     try {
-      final contact = state.emergencyContacts.firstWhere(
-        (c) => c.id == contactId,
-        orElse: () => throw Exception('Contact not found'),
-      );
+      // Check if we can send SMS (this is a simple way to check permissions)
+      bool permissionsGranted =
+          await _telephony.requestPhoneAndSmsPermissions ?? false;
+      return permissionsGranted;
+    } catch (e) {
+      debugPrint('❌ Error checking SMS permissions: $e');
+      return false;
+    }
+  }
 
-      if (!contact.isActive) {
-        debugPrint('❌ Cannot send SMS to inactive contact: ${contact.name}');
+  /// Send a test SMS to verify functionality
+  Future<bool> sendTestSms(String phoneNumber) async {
+    try {
+      bool permissionsGranted =
+          await _telephony.requestPhoneAndSmsPermissions ?? false;
+
+      if (!permissionsGranted) {
         state = state.copyWith(
-          error: 'Cannot send SMS to inactive contact: ${contact.name}',
+          error: 'SMS permissions required to send test message.',
         );
         return false;
       }
 
-      final SmsSender sender = SmsSender();
-      debugPrint('📱 Sending SMS to ${contact.name} (${contact.phone})');
+      final testMessage = '''
+📱 TEST MESSAGE from Nirbhay Safety App
 
-      final SmsMessage smsMessage = SmsMessage(contact.phone, message);
-      await sender.sendSms(smsMessage);
+This is a test message to verify that SMS functionality is working correctly.
 
-      debugPrint('✅ SMS sent successfully to ${contact.name}');
+Time: ${DateTime.now().toString()}
+
+If you received this message, emergency SMS alerts are properly configured.
+
+- Nirbhay Safety System
+''';
+
+      await _telephony.sendSms(
+        to: phoneNumber,
+        message: testMessage,
+        isMultipart: true,
+        statusListener: (SendStatus status) {
+          switch (status) {
+            case SendStatus.SENT:
+              debugPrint('✅ Test SMS sent successfully');
+              break;
+            case SendStatus.DELIVERED:
+              debugPrint('✅ Test SMS delivered successfully');
+              break;
+          }
+        },
+      );
+
+      debugPrint('📱 Test SMS sent to: $phoneNumber');
       return true;
     } catch (e) {
-      debugPrint('❌ Failed to send SMS: $e');
-      state = state.copyWith(error: 'Failed to send SMS: ${e.toString()}');
+      debugPrint('❌ Failed to send test SMS: $e');
+      state = state.copyWith(error: 'Failed to send test SMS: ${e.toString()}');
       return false;
     }
   }

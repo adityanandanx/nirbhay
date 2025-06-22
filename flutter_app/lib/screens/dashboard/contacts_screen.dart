@@ -53,25 +53,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Test SMS Button
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 16),
-              child: ElevatedButton.icon(
-                onPressed: () => _sendTestSMSToAll(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                icon: const Icon(Icons.sms),
-                label: const Text('Send Test SMS to All Active Contacts'),
-              ),
-            ),
-
             Expanded(
               child: ListView.builder(
                 itemCount: emergencyContacts.length,
@@ -231,16 +212,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                         ),
                       ),
                       const PopupMenuItem(
-                        value: 'sms',
-                        child: Row(
-                          children: [
-                            Icon(Icons.sms, size: 18),
-                            SizedBox(width: 8),
-                            Text('Send SMS'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
@@ -288,9 +259,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Calling ${contacts[index].name}...')),
         );
-        break;
-      case 'sms':
-        _sendTestSMS(contacts[index]);
         break;
       case 'delete':
         _deleteContact(index, contacts);
@@ -436,225 +404,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 child: Text(
                   contact == null ? 'Add' : 'Save',
                   style: const TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _sendTestSMS(EmergencyContact contact) {
-    _showSMSDialog(contact);
-  }
-
-  void _showSMSDialog(EmergencyContact contact) {
-    final messageController = TextEditingController(
-      text:
-          'Hi ${contact.name}, this is a test message from Nirbhay Safety App. Please reply if you received this message.',
-    );
-
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Send SMS to ${contact.name}'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Phone: ${contact.phone}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: messageController,
-                  decoration: const InputDecoration(
-                    labelText: 'Message',
-                    border: OutlineInputBorder(),
-                    hintText: 'Enter your message here...',
-                  ),
-                  maxLines: 4,
-                  maxLength: 160, // Standard SMS length
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  if (messageController.text.isNotEmpty) {
-                    Navigator.of(context).pop();
-
-                    // Show loading indicator
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Sending SMS to ${contact.name}...'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-
-                    // Send SMS using the safety provider
-                    final success = await ref
-                        .read(safetyStateProvider.notifier)
-                        .sendSMSToContact(contact.id, messageController.text);
-
-                    // Show result
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            success
-                                ? '✅ SMS sent successfully to ${contact.name}'
-                                : '❌ Failed to send SMS to ${contact.name}',
-                          ),
-                          backgroundColor: success ? Colors.green : Colors.red,
-                          duration: const Duration(seconds: 3),
-                        ),
-                      );
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
-                child: const Text(
-                  'Send SMS',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _sendTestSMSToAll() {
-    final activeContacts =
-        ref
-            .read(safetyStateProvider)
-            .emergencyContacts
-            .where((c) => c.isActive)
-            .toList();
-
-    if (activeContacts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No active emergency contacts to send SMS to'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Send Test SMS to All'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'This will send a test SMS to ${activeContacts.length} active contact(s):',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                ...activeContacts.map(
-                  (contact) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.person,
-                          size: 16,
-                          color: Colors.grey.shade600,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '${contact.name} (${contact.phone})',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: const Text(
-                    'This is a test message from Nirbhay Safety App to verify that emergency SMS functionality is working correctly.',
-                    style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-
-                  // Show loading indicator
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Sending test SMS to ${activeContacts.length} contact(s)...',
-                      ),
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-
-                  // Send SMS using the safety provider
-                  const testMessage = '''🔔 TEST MESSAGE 🔔
-
-This is a test message from Nirbhay Safety App to verify that emergency SMS functionality is working correctly.
-
-If you received this message, the emergency alert system is functioning properly.
-
-- Nirbhay Safety System''';
-
-                  final success = await ref
-                      .read(safetyStateProvider.notifier)
-                      .sendCustomSMSToEmergencyContacts(testMessage);
-
-                  // Show result
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          success
-                              ? '✅ Test SMS sent successfully to all active contacts'
-                              : '❌ Failed to send test SMS to some or all contacts',
-                        ),
-                        backgroundColor: success ? Colors.green : Colors.red,
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-                child: const Text(
-                  'Send Test SMS',
-                  style: TextStyle(color: Colors.white),
                 ),
               ),
             ],
