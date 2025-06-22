@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_providers.dart';
+import '../../widgets/location_map_section.dart';
 import '../../widgets/quick_actions_section.dart';
 import '../../widgets/safety_status_card.dart';
 import '../../widgets/sos_button.dart';
@@ -101,6 +102,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // Wearable Status
               WearableStatusCard(onManageDevice: _navigateToBLEConnection),
+              const SizedBox(height: 30),
+
+              // Location Map Section (new addition)
+              const LocationMapSection(),
               const SizedBox(height: 30),
 
               // Quick Actions
