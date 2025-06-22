@@ -1,27 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/app_providers.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  // Settings states
-  bool _emergencyAlertsEnabled = true;
-  bool _locationSharingEnabled = true;
-  bool _automaticDetectionEnabled = true;
-  bool _vibrationEnabled = true;
-  bool _soundEnabled = true;
-  bool _biometricEnabled = false;
-  bool _dataBackupEnabled = true;
-
-  String _alertSensitivity = 'Medium';
-  String _emergencyResponseTime = '30 seconds';
-
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsStateProvider);
+    final settingsNotifier = ref.watch(settingsStateProvider.notifier);
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -32,192 +25,227 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Emergency Settings
-            _buildSectionCard(
-              'Emergency Settings',
-              Icons.emergency,
-              Colors.red,
-              [
-                _buildSwitchTile(
-                  'Emergency Alerts',
-                  'Automatically send alerts when threat is detected',
-                  _emergencyAlertsEnabled,
-                  (value) => setState(() => _emergencyAlertsEnabled = value),
-                ),
-                _buildSwitchTile(
-                  'Location Sharing',
-                  'Share location with emergency contacts',
-                  _locationSharingEnabled,
-                  (value) => setState(() => _locationSharingEnabled = value),
-                ),
-                _buildDropdownTile(
-                  'Response Time',
-                  'Time before emergency alert is sent',
-                  _emergencyResponseTime,
-                  ['10 seconds', '30 seconds', '1 minute', '2 minutes'],
-                  (value) => setState(() => _emergencyResponseTime = value!),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+      body:
+          settings.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Emergency Settings
+                    _buildSectionCard(
+                      'Emergency Settings',
+                      Icons.emergency,
+                      Colors.red,
+                      [
+                        _buildSwitchTile(
+                          'Emergency Alerts',
+                          'Automatically send alerts when threat is detected',
+                          settings.emergencyAlertsEnabled,
+                          (value) =>
+                              settingsNotifier.setEmergencyAlertsEnabled(value),
+                        ),
+                        _buildSwitchTile(
+                          'Location Sharing',
+                          'Share location with emergency contacts',
+                          settings.locationSharingEnabled,
+                          (value) =>
+                              settingsNotifier.setLocationSharingEnabled(value),
+                        ),
+                        _buildDropdownTile(
+                          'SOS Countdown Timer',
+                          'Time before emergency alert is sent',
+                          settings.sosCountdownTime.toString(),
+                          [10, 20, 30, 60].map((e) => e.toString()).toList(),
+                          (value) => {
+                            settingsNotifier.setSosCountdownTime(
+                              int.parse(value!),
+                            ),
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-            // Safety Detection
-            _buildSectionCard('Safety Detection', Icons.shield, Colors.orange, [
-              _buildSwitchTile(
-                'Automatic Threat Detection',
-                'Monitor vitals and movement patterns',
-                _automaticDetectionEnabled,
-                (value) => setState(() => _automaticDetectionEnabled = value),
-              ),
-              _buildDropdownTile(
-                'Alert Sensitivity',
-                'Adjust detection sensitivity level',
-                _alertSensitivity,
-                ['Low', 'Medium', 'High'],
-                (value) => setState(() => _alertSensitivity = value!),
-              ),
-            ]),
-            const SizedBox(height: 20),
+                    // Safety Detection
+                    _buildSectionCard(
+                      'Safety Detection',
+                      Icons.shield,
+                      Colors.orange,
+                      [
+                        _buildSwitchTile(
+                          'Automatic Threat Detection',
+                          'Monitor vitals and movement patterns',
+                          settings.automaticDetectionEnabled,
+                          (value) => settingsNotifier
+                              .setAutomaticDetectionEnabled(value),
+                        ),
+                        // _buildDropdownTile(
+                        //   'Alert Sensitivity',
+                        //   'Adjust detection sensitivity level',
+                        //   settings.alertSensitivity,
+                        //   ['Low', 'Medium', 'High'],
+                        //   (value) =>
+                        //       settingsNotifier.setAlertSensitivity(value!),
+                        // ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-            // Device Settings
-            _buildSectionCard('Device Settings', Icons.watch, Colors.blue, [
-              _buildSwitchTile(
-                'Vibration Alerts',
-                'Vibrate when alerts are triggered',
-                _vibrationEnabled,
-                (value) => setState(() => _vibrationEnabled = value),
-              ),
-              _buildSwitchTile(
-                'Sound Alerts',
-                'Play sound for emergency notifications',
-                _soundEnabled,
-                (value) => setState(() => _soundEnabled = value),
-              ),
-              _buildActionTile(
-                'Calibrate Sensors',
-                'Re-calibrate heart rate and motion sensors',
-                () => _calibrateSensors(),
-              ),
-              _buildActionTile(
-                'Device Sync',
-                'Sync data with your wearable device',
-                () => _syncDevice(),
-              ),
-            ]),
-            const SizedBox(height: 20),
+                    // Device Settings
+                    _buildSectionCard(
+                      'Device Settings',
+                      Icons.watch,
+                      Colors.blue,
+                      [
+                        // _buildSwitchTile(
+                        //   'Vibration Alerts',
+                        //   'Vibrate when alerts are triggered',
+                        //   settings.vibrationEnabled,
+                        //   (value) =>
+                        //       settingsNotifier.setVibrationEnabled(value),
+                        // ),
+                        // _buildSwitchTile(
+                        //   'Sound Alerts',
+                        //   'Play sound for emergency notifications',
+                        //   settings.soundEnabled,
+                        //   (value) => settingsNotifier.setSoundEnabled(value),
+                        // ),
+                        _buildActionTile(
+                          'Calibrate Sensors',
+                          'Re-calibrate heart rate and motion sensors',
+                          () => _calibrateSensors(),
+                        ),
+                        // _buildActionTile(
+                        //   'Device Sync',
+                        //   'Sync data with your wearable device',
+                        //   () => _syncDevice(),
+                        // ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-            // Security & Privacy
-            _buildSectionCard(
-              'Security & Privacy',
-              Icons.security,
-              Colors.purple,
-              [
-                _buildSwitchTile(
-                  'Biometric Authentication',
-                  'Use fingerprint or face unlock',
-                  _biometricEnabled,
-                  (value) => setState(() => _biometricEnabled = value),
-                ),
-                _buildSwitchTile(
-                  'Data Backup',
-                  'Backup app data to cloud',
-                  _dataBackupEnabled,
-                  (value) => setState(() => _dataBackupEnabled = value),
-                ),
-                _buildActionTile(
-                  'Change Password',
-                  'Update your account password',
-                  () => _changePassword(),
-                ),
-                _buildActionTile(
-                  'Privacy Policy',
-                  'View our privacy policy',
-                  () => _showPrivacyPolicy(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+                    // Security & Privacy
+                    _buildSectionCard(
+                      'Security & Privacy',
+                      Icons.security,
+                      Colors.purple,
+                      [
+                        // _buildSwitchTile(
+                        //   'Biometric Authentication',
+                        //   'Use fingerprint or face unlock',
+                        //   settings.biometricEnabled,
+                        //   (value) =>
+                        //       settingsNotifier.setBiometricEnabled(value),
+                        // ),
+                        // _buildSwitchTile(
+                        //   'Data Backup',
+                        //   'Backup app data to cloud',
+                        //   settings.dataBackupEnabled,
+                        //   (value) =>
+                        //       settingsNotifier.setDataBackupEnabled(value),
+                        // ),
+                        _buildActionTile(
+                          'Change Password',
+                          'Update your account password',
+                          () => _changePassword(),
+                        ),
+                        _buildActionTile(
+                          'Privacy Policy',
+                          'View our privacy policy',
+                          () => _showPrivacyPolicy(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-            // App Settings
-            _buildSectionCard('App Settings', Icons.settings, Colors.green, [
-              _buildActionTile(
-                'About Nirbhay',
-                'App version and information',
-                () => _showAboutDialog(),
-              ),
-              _buildActionTile(
-                'Contact Support',
-                'Get help or report issues',
-                () => _contactSupport(),
-              ),
-              _buildActionTile(
-                'Rate App',
-                'Rate us on the app store',
-                () => _rateApp(),
-              ),
-              _buildActionTile(
-                'Export Data',
-                'Download your safety data',
-                () => _exportData(),
-              ),
-            ]),
-            const SizedBox(height: 20),
+                    // App Settings
+                    // _buildSectionCard(
+                    //   'App Settings',
+                    //   Icons.settings,
+                    //   Colors.green,
+                    //   [
+                    //     _buildActionTile(
+                    //       'About Nirbhay',
+                    //       'App version and information',
+                    //       () => _showAboutDialog(),
+                    //     ),
+                    //     _buildActionTile(
+                    //       'Contact Support',
+                    //       'Get help or report issues',
+                    //       () => _contactSupport(),
+                    //     ),
+                    //     _buildActionTile(
+                    //       'Rate App',
+                    //       'Rate us on the app store',
+                    //       () => _rateApp(),
+                    //     ),
+                    //     _buildActionTile(
+                    //       'Export Data',
+                    //       'Download your safety data',
+                    //       () => _exportData(),
+                    //     ),
+                    //   ],
+                    // ),
+                    // const SizedBox(height: 20),
 
-            // Reset Settings
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.shade200,
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.orange.shade600,
-                    size: 32,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Reset Settings',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Reset all settings to default values',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _resetSettings,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                    // Reset Settings
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.shade200,
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.orange.shade600,
+                            size: 32,
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Reset Settings',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Reset all settings to default values',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () => _resetSettings(),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Reset to Defaults'),
+                          ),
+                        ],
                       ),
                     ),
-                    child: const Text('Reset to Defaults'),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -553,17 +581,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               ElevatedButton(
                 onPressed: () {
-                  setState(() {
-                    _emergencyAlertsEnabled = true;
-                    _locationSharingEnabled = true;
-                    _automaticDetectionEnabled = true;
-                    _vibrationEnabled = true;
-                    _soundEnabled = true;
-                    _biometricEnabled = false;
-                    _dataBackupEnabled = true;
-                    _alertSensitivity = 'Medium';
-                    _emergencyResponseTime = '30 seconds';
-                  });
+                  ref.read(settingsStateProvider.notifier).resetToDefaults();
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Settings reset to defaults')),

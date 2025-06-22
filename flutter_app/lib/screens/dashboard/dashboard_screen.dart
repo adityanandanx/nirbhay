@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nirbhay_flutter/widgets/sos_floating_action_button.dart';
 import 'home_screen.dart';
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
@@ -55,6 +56,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
+      floatingActionButton: SOSFloatingActionButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
