@@ -59,7 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withAlpha(10),
                           blurRadius: 10,
                           offset: const Offset(0, 5),
                         ),
@@ -285,7 +285,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(10),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -302,7 +302,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(
             title,
             style: TextStyle(
-              color: color.withOpacity(0.8),
+              color: color.withAlpha(80),
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),

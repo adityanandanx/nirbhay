@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../ble_connection_screen.dart';
 import '../../services/ble_service.dart';
@@ -377,10 +378,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Call\nSupport',
                       Icons.phone,
                       Colors.blue,
-                      () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Calling support...')),
+                      () async {
+                        const number = '8439336494'; //set the number here
+                        bool? res = await FlutterPhoneDirectCaller.callNumber(
+                          number,
                         );
+                        if (context.mounted && res == true) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Support call initiated'),
+                            ),
+                          );
+                        }
                       },
                     ),
                   ),
