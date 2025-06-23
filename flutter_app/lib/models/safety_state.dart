@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/emergency_contact.dart';
 
@@ -12,6 +11,7 @@ class SafetyState {
   final List<EmergencyContact> emergencyContacts;
   final bool isLoading;
   final String? error;
+  final bool isVoiceDetectionActive;
 
   const SafetyState({
     this.isSafetyModeActive = false,
@@ -22,6 +22,7 @@ class SafetyState {
     this.emergencyContacts = const [],
     this.isLoading = false,
     this.error,
+    this.isVoiceDetectionActive = false,
   });
 
   SafetyState copyWith({
@@ -33,6 +34,7 @@ class SafetyState {
     List<EmergencyContact>? emergencyContacts,
     bool? isLoading,
     String? error,
+    bool? isVoiceDetectionActive,
   }) {
     return SafetyState(
       isSafetyModeActive: isSafetyModeActive ?? this.isSafetyModeActive,
@@ -43,6 +45,8 @@ class SafetyState {
       emergencyContacts: emergencyContacts ?? this.emergencyContacts,
       isLoading: isLoading ?? this.isLoading,
       error: error ?? this.error,
+      isVoiceDetectionActive:
+          isVoiceDetectionActive ?? this.isVoiceDetectionActive,
     );
   }
 

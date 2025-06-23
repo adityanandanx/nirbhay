@@ -8,6 +8,7 @@ import '../models/safety_state.dart';
 import '../services/contact_service.dart';
 import '../services/emergency_service.dart';
 import '../services/location_service.dart';
+import '../services/speech_recognition_service.dart';
 import 'ble_provider.dart';
 import 'settings_provider.dart';
 
@@ -27,6 +28,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   late final ContactService _contactService;
   late final LocationService _locationService;
   late final EmergencyService _emergencyService;
+  late final SpeechRecognitionService _speechRecognitionService;
 
   StreamSubscription<BLEState>? _bleStateSubscription;
 
@@ -35,6 +37,10 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     _contactService = ContactService();
     _locationService = LocationService();
     _emergencyService = EmergencyService(_settingsNotifier.state);
+    _speechRecognitionService = SpeechRecognitionService();
+
+    // Initialize speech recognition and set up emergency detection callback
+    await _initSpeechRecognition();
 
     // Set up location update callback
     _locationService.setPositionUpdateCallback(_handlePositionUpdate);
@@ -94,6 +100,21 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         }
       }
 
+      bool voiceDetectionActive = false;
+
+      // Start/stop voice recognition based on safety mode and settings
+      if (newState && _settingsNotifier.state.voiceDetectionEnabled) {
+        voiceDetectionActive = await _speechRecognitionService.startListening();
+        if (voiceDetectionActive) {
+          debugPrint('✅ Voice recognition started');
+        } else {
+          debugPrint('⚠️ Voice recognition failed to start');
+        }
+      } else if (!newState) {
+        await _speechRecognitionService.stopListening();
+        debugPrint('✅ Voice recognition stopped');
+      }
+
       // Start/stop location tracking based on safety mode
       if (newState) {
         state = await _locationService.startLocationTracking(state);
@@ -101,11 +122,15 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         state = _locationService.stopLocationTracking(state);
       }
 
-      state = state.copyWith(isLoading: false);
+      state = state.copyWith(
+        isLoading: false,
+        isVoiceDetectionActive: newState && voiceDetectionActive,
+      );
     } catch (e) {
       state = state.copyWith(
         isSafetyModeActive: !newState, // Revert on error
         isLoading: false,
+        isVoiceDetectionActive: false,
         error: 'Failed to toggle safety mode: ${e.toString()}',
       );
     }
@@ -224,6 +249,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   @override
   void dispose() {
     _bleStateSubscription?.cancel();
+    _speechRecognitionService.stopListening();
     super.dispose();
   }
 
@@ -239,5 +265,93 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         state.error!.contains('Potential threat detected')) {
       await triggerEmergencyAlert();
     }
+  }
+
+  /// Initialize speech recognition service
+  Future<void> _initSpeechRecognition() async {
+    try {
+      // Initialize the speech recognition service
+      final initialized = await _speechRecognitionService.initialize();
+
+      if (!initialized) {
+        debugPrint('⚠️ Speech recognition initialization failed');
+        state = state.copyWith(
+          error: 'Voice detection not available on this device.',
+        );
+        return;
+      }
+
+      // Set up the callback for when an emergency is detected through voice
+      _speechRecognitionService.onEmergencyDetected = () {
+        if (state.isSafetyModeActive && !state.isEmergencyActive) {
+          debugPrint('🚨 Emergency detected through voice keywords!');
+
+          state = state.copyWith(
+            error:
+                'Emergency voice command detected! Triggering emergency alert.',
+          );
+
+          // Trigger the emergency alert
+          triggerEmergencyAlert();
+        }
+      };
+
+      // Set up debug callback for detected words (for debugging only)
+      _speechRecognitionService.onSpeechResult = (text) {
+        debugPrint('🔊 Speech recognized: $text');
+      };
+
+      debugPrint('✅ Speech recognition service initialized successfully');
+    } catch (e) {
+      debugPrint('❌ Failed to initialize speech recognition: $e');
+      state = state.copyWith(
+        error: 'Voice detection setup failed: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Start speech recognition manually
+  Future<bool> startVoiceDetection() async {
+    try {
+      final started = await _speechRecognitionService.startListening();
+
+      if (started) {
+        debugPrint('✅ Voice detection started manually');
+        state = state.copyWith(isVoiceDetectionActive: true);
+      } else {
+        state = state.copyWith(
+          error: 'Failed to start voice detection',
+          isVoiceDetectionActive: false,
+        );
+      }
+
+      return started;
+    } catch (e) {
+      debugPrint('❌ Error starting voice detection: $e');
+      state = state.copyWith(
+        error: 'Voice detection error: ${e.toString()}',
+        isVoiceDetectionActive: false,
+      );
+      return false;
+    }
+  }
+
+  /// Stop speech recognition manually
+  Future<void> stopVoiceDetection() async {
+    try {
+      await _speechRecognitionService.stopListening();
+      debugPrint('✅ Voice detection stopped manually');
+      state = state.copyWith(isVoiceDetectionActive: false);
+    } catch (e) {
+      debugPrint('❌ Error stopping voice detection: $e');
+      state = state.copyWith(
+        error: 'Error stopping voice detection: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Check if speech recognition is available on this device
+  Future<bool> isVoiceDetectionAvailable() async {
+    return await _speechRecognitionService.isAvailable();
   }
 }
