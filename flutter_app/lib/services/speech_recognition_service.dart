@@ -14,6 +14,16 @@ class SpeechRecognitionService {
   bool _isListening = false;
   bool _shouldContinueListening = false;
 
+  // Emergency cooldown tracking
+  DateTime? _lastEmergencyTime;
+  static const _emergencyCooldownPeriod = Duration(minutes: 2);
+  bool _isProcessingEmergency = false;
+
+  // Track last detected keywords to avoid duplicates
+  String? _lastDetectedKeyword;
+  DateTime? _lastKeywordTime;
+  static const _keywordDuplicateThreshold = Duration(seconds: 10);
+
   // Speech recognition settings
   final int _listeningTimeout = 30; // seconds per listening session
   final String _localeId = 'en_US'; // default locale
@@ -227,15 +237,67 @@ class SpeechRecognitionService {
     // Notify listener of speech result (for debugging)
     onSpeechResult?.call(recognizedWords);
 
+    // Only process final results to avoid multiple triggers
+    if (!result.finalResult) {
+      return; // Skip interim results
+    }
+
     // Check for emergency keywords
     if (recognizedWords.isNotEmpty &&
+        !_isProcessingEmergency && // Prevent concurrent processing
         _containsEmergencyKeyword(recognizedWords)) {
-      // Trigger emergency callback
-      onEmergencyDetected?.call();
+      // Check if we're still within the cooldown period
+      final now = DateTime.now();
+      if (_lastEmergencyTime == null ||
+          now.difference(_lastEmergencyTime!) > _emergencyCooldownPeriod) {
+        // Prevent concurrent emergency processing
+        _isProcessingEmergency = true;
 
-      // Stop listening after emergency is detected
-      // Can be restarted by the application when appropriate
-      stopListening();
+        debugPrint('⚠️ EMERGENCY DETECTED - Triggering alert');
+
+        // Update tracking info
+        _lastEmergencyTime = now;
+
+        // Track the keyword to prevent duplicates
+        _lastDetectedKeyword = recognizedWords.toLowerCase();
+        _lastKeywordTime = now;
+
+        // Trigger emergency callback (in a try-catch to ensure we release lock)
+        try {
+          onEmergencyDetected?.call();
+        } catch (e) {
+          debugPrint('❌ Error in emergency callback: $e');
+        } finally {
+          // Release processing lock after a delay to prevent rapid re-triggering
+          Future.delayed(const Duration(seconds: 5), () {
+            _isProcessingEmergency = false;
+          });
+        }
+
+        // Stop listening after emergency is detected
+        stopListening();
+      } else {
+        debugPrint('🚫 Emergency cooldown active, ignoring detection');
+      }
+    } else if (recognizedWords.isNotEmpty &&
+        _lastDetectedKeyword != null &&
+        _lastKeywordTime != null) {
+      // Check if this is too similar to a recent detection (avoid duplicates)
+      final now = DateTime.now();
+      if (now.difference(_lastKeywordTime!) < _keywordDuplicateThreshold &&
+          _isSimilarText(
+            recognizedWords.toLowerCase(),
+            _lastDetectedKeyword!,
+          )) {
+        debugPrint('🔄 Ignoring duplicate speech input');
+        return;
+      }
+    }
+
+    // Track last detected keyword and time to avoid duplicates
+    if (recognizedWords.isNotEmpty) {
+      _lastDetectedKeyword = recognizedWords;
+      _lastKeywordTime = DateTime.now();
     }
   }
 
@@ -354,5 +416,28 @@ class SpeechRecognitionService {
       return await initialize();
     }
     return _isInitialized;
+  }
+
+  /// Check if two text strings are similar (to avoid duplicate triggers)
+  bool _isSimilarText(String text1, String text2) {
+    // If either string contains the other, they're similar enough
+    if (text1.contains(text2) || text2.contains(text1)) {
+      return true;
+    }
+
+    // Count shared words to determine similarity
+    final words1 = text1.split(' ');
+    final words2 = text2.split(' ');
+
+    // Count matching words
+    int matchingWords = 0;
+    for (final word in words1) {
+      if (word.length > 3 && words2.contains(word)) {
+        matchingWords++;
+      }
+    }
+
+    // If more than half the words match, consider it similar
+    return matchingWords >= (words1.length / 2).ceil();
   }
 }

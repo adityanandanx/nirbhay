@@ -136,12 +136,54 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     }
   }
 
+  // Lock to prevent multiple simultaneous emergency triggers
+  bool _isTriggering = false;
+  // Timestamp of the last emergency trigger
+  DateTime? _lastEmergencyTriggerTime;
+  // Cooldown period between emergency triggers
+  static const Duration _emergencyCooldown = Duration(minutes: 1);
+
   Future<void> triggerEmergencyAlert() async {
+    final now = DateTime.now();
+
+    // Check if already in emergency state
+    if (state.isEmergencyActive) {
+      debugPrint('⚠️ Emergency already active, ignoring trigger');
+      return;
+    }
+
+    // Check cooldown period
+    if (_lastEmergencyTriggerTime != null) {
+      final timeSinceLastTrigger = now.difference(_lastEmergencyTriggerTime!);
+      if (timeSinceLastTrigger < _emergencyCooldown) {
+        debugPrint(
+          '🕒 Emergency cooldown period active (${timeSinceLastTrigger.inSeconds}s), ignoring trigger',
+        );
+        return;
+      }
+    }
+
+    // Prevent multiple simultaneous triggers
+    if (_isTriggering) {
+      debugPrint('⚠️ Already triggering emergency, ignoring duplicate call');
+      return;
+    }
+
+    _isTriggering = true;
+
     try {
+      debugPrint('🚨 TRIGGERING EMERGENCY ALERT');
+      _lastEmergencyTriggerTime = now;
+
       // Get current location for emergency if not already tracking
       Position? currentLocation;
       if (state.currentLocation == null) {
-        currentLocation = await _locationService.getCurrentLocation();
+        try {
+          currentLocation = await _locationService.getCurrentLocation();
+        } catch (e) {
+          debugPrint('⚠️ Failed to get location for emergency: $e');
+          // Continue without location
+        }
       }
 
       // Trigger emergency through the service
@@ -149,11 +191,16 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         state,
         currentLocation,
       );
+
+      debugPrint('✅ Emergency alert triggered successfully');
     } catch (e) {
+      debugPrint('❌ Failed to trigger emergency alert: $e');
       state = state.copyWith(
         isLoading: false,
         error: 'Failed to send emergency alert: ${e.toString()}',
       );
+    } finally {
+      _isTriggering = false;
     }
   }
 
@@ -281,18 +328,47 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         return;
       }
 
+      // Emergency handling lock to prevent multiple simultaneous triggers
+      bool isHandlingEmergency = false;
+
       // Set up the callback for when an emergency is detected through voice
-      _speechRecognitionService.onEmergencyDetected = () {
-        if (state.isSafetyModeActive && !state.isEmergencyActive) {
-          debugPrint('🚨 Emergency detected through voice keywords!');
-
-          state = state.copyWith(
-            error:
-                'Emergency voice command detected! Triggering emergency alert.',
+      _speechRecognitionService.onEmergencyDetected = () async {
+        // Prevent multiple simultaneous emergency handling
+        if (isHandlingEmergency) {
+          debugPrint(
+            '⚠️ Already handling an emergency, ignoring additional trigger',
           );
+          return;
+        }
 
-          // Trigger the emergency alert
-          triggerEmergencyAlert();
+        // Only trigger if safety mode is active and not already in emergency
+        if (state.isSafetyModeActive && !state.isEmergencyActive) {
+          isHandlingEmergency = true;
+
+          try {
+            debugPrint('🚨 Emergency detected through voice keywords!');
+
+            // Update state with emergency notice
+            state = state.copyWith(
+              error:
+                  'Emergency voice command detected! Triggering emergency alert.',
+            );
+
+            // Trigger the emergency alert
+            await triggerEmergencyAlert();
+
+            // Add delay before allowing another emergency
+            await Future.delayed(const Duration(seconds: 10));
+          } catch (e) {
+            debugPrint('❌ Error handling voice emergency: $e');
+          } finally {
+            // Release emergency handling lock
+            isHandlingEmergency = false;
+          }
+        } else {
+          debugPrint(
+            '⚠️ Voice emergency ignored: safety mode inactive or emergency already active',
+          );
         }
       };
 
