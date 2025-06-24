@@ -6,6 +6,7 @@ class SettingsState {
   final bool emergencyAlertsEnabled;
   final bool locationSharingEnabled;
   final bool automaticDetectionEnabled;
+  final bool voiceDetectionEnabled;
   final bool vibrationEnabled;
   final bool soundEnabled;
   final bool biometricEnabled;
@@ -19,6 +20,7 @@ class SettingsState {
     this.emergencyAlertsEnabled = true,
     this.locationSharingEnabled = true,
     this.automaticDetectionEnabled = true,
+    this.voiceDetectionEnabled = true,
     this.vibrationEnabled = true,
     this.soundEnabled = true,
     this.biometricEnabled = false,
@@ -33,6 +35,7 @@ class SettingsState {
     bool? emergencyAlertsEnabled,
     bool? locationSharingEnabled,
     bool? automaticDetectionEnabled,
+    bool? voiceDetectionEnabled,
     bool? vibrationEnabled,
     bool? soundEnabled,
     bool? biometricEnabled,
@@ -49,6 +52,8 @@ class SettingsState {
           locationSharingEnabled ?? this.locationSharingEnabled,
       automaticDetectionEnabled:
           automaticDetectionEnabled ?? this.automaticDetectionEnabled,
+      voiceDetectionEnabled:
+          voiceDetectionEnabled ?? this.voiceDetectionEnabled,
       vibrationEnabled: vibrationEnabled ?? this.vibrationEnabled,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       biometricEnabled: biometricEnabled ?? this.biometricEnabled,
@@ -70,6 +75,7 @@ class SettingsStateNotifier extends StateNotifier<SettingsState> {
   static const String _keyEmergencyAlerts = 'emergency_alerts_enabled';
   static const String _keyLocationSharing = 'location_sharing_enabled';
   static const String _keyAutomaticDetection = 'automatic_detection_enabled';
+  static const String _keyVoiceDetection = 'voice_detection_enabled';
   static const String _keyVibration = 'vibration_enabled';
   static const String _keySound = 'sound_enabled';
   static const String _keyBiometric = 'biometric_enabled';
@@ -87,6 +93,7 @@ class SettingsStateNotifier extends StateNotifier<SettingsState> {
         locationSharingEnabled: prefs.getBool(_keyLocationSharing) ?? true,
         automaticDetectionEnabled:
             prefs.getBool(_keyAutomaticDetection) ?? true,
+        voiceDetectionEnabled: prefs.getBool(_keyVoiceDetection) ?? true,
         vibrationEnabled: prefs.getBool(_keyVibration) ?? true,
         soundEnabled: prefs.getBool(_keySound) ?? true,
         biometricEnabled: prefs.getBool(_keyBiometric) ?? false,
@@ -107,6 +114,7 @@ class SettingsStateNotifier extends StateNotifier<SettingsState> {
         prefs.setBool(_keyEmergencyAlerts, state.emergencyAlertsEnabled),
         prefs.setBool(_keyLocationSharing, state.locationSharingEnabled),
         prefs.setBool(_keyAutomaticDetection, state.automaticDetectionEnabled),
+        prefs.setBool(_keyVoiceDetection, state.voiceDetectionEnabled),
         prefs.setBool(_keyVibration, state.vibrationEnabled),
         prefs.setBool(_keySound, state.soundEnabled),
         prefs.setBool(_keyBiometric, state.biometricEnabled),
@@ -131,6 +139,11 @@ class SettingsStateNotifier extends StateNotifier<SettingsState> {
 
   void setAutomaticDetectionEnabled(bool enabled) {
     state = state.copyWith(automaticDetectionEnabled: enabled);
+    _saveSettings();
+  }
+
+  void setVoiceDetectionEnabled(bool enabled) {
+    state = state.copyWith(voiceDetectionEnabled: enabled);
     _saveSettings();
   }
 

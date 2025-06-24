@@ -2,66 +2,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:another_telephony/telephony.dart';
-import 'dart:convert';
+
 import '../models/emergency_contact.dart';
+import '../models/safety_state.dart';
+import '../services/contact_service.dart';
+import '../services/emergency_service.dart';
+import '../services/location_service.dart';
+import '../services/speech_recognition_service.dart';
 import 'ble_provider.dart';
 import 'settings_provider.dart';
 
-// Safety State Model
-class SafetyState {
-  final bool isSafetyModeActive;
-  final Position? currentLocation;
-  final bool isLocationTracking;
-  final bool isEmergencyActive;
-  final DateTime? lastEmergencyTime;
-  final List<EmergencyContact> emergencyContacts;
-  final bool isLoading;
-  final String? error;
-
-  const SafetyState({
-    this.isSafetyModeActive = false,
-    this.currentLocation,
-    this.isLocationTracking = false,
-    this.isEmergencyActive = false,
-    this.lastEmergencyTime,
-    this.emergencyContacts = const [],
-    this.isLoading = false,
-    this.error,
-  });
-
-  SafetyState copyWith({
-    bool? isSafetyModeActive,
-    Position? currentLocation,
-    bool? isLocationTracking,
-    bool? isEmergencyActive,
-    DateTime? lastEmergencyTime,
-    List<EmergencyContact>? emergencyContacts,
-    bool? isLoading,
-    String? error,
-  }) {
-    return SafetyState(
-      isSafetyModeActive: isSafetyModeActive ?? this.isSafetyModeActive,
-      currentLocation: currentLocation ?? this.currentLocation,
-      isLocationTracking: isLocationTracking ?? this.isLocationTracking,
-      isEmergencyActive: isEmergencyActive ?? this.isEmergencyActive,
-      lastEmergencyTime: lastEmergencyTime ?? this.lastEmergencyTime,
-      emergencyContacts: emergencyContacts ?? this.emergencyContacts,
-      isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
-    );
-  }
-
-  String get safetyStatus {
-    if (isEmergencyActive) return 'Emergency Active';
-    if (isSafetyModeActive) return 'Protected';
-    return 'Inactive';
-  }
-}
-
-// Safety State Notifier
+/// Safety Provider
+/// This is the main provider for the safety features of the app
+/// It orchestrates all the safety-related services
 class SafetyStateNotifier extends StateNotifier<SafetyState> {
   SafetyStateNotifier(this._bleStateNotifier, this._settingsNotifier)
     : super(const SafetyState()) {
@@ -71,22 +24,37 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   final BLEStateNotifier _bleStateNotifier;
   final SettingsStateNotifier _settingsNotifier;
 
-  /// SMS service for sending emergency and cancellation messages
-  /// Requires SEND_SMS permission in AndroidManifest.xml
-  final Telephony _telephony = Telephony.instance;
+  // Services
+  late final ContactService _contactService;
+  late final LocationService _locationService;
+  late final EmergencyService _emergencyService;
+  late final SpeechRecognitionService _speechRecognitionService;
+
   StreamSubscription<BLEState>? _bleStateSubscription;
 
   void _init() async {
+    // Initialize services
+    _contactService = ContactService();
+    _locationService = LocationService();
+    _emergencyService = EmergencyService(_settingsNotifier.state);
+    _speechRecognitionService = SpeechRecognitionService();
+
+    // Initialize speech recognition and set up emergency detection callback
+    await _initSpeechRecognition();
+
+    // Set up location update callback
+    _locationService.setPositionUpdateCallback(_handlePositionUpdate);
+
     // Load emergency contacts from persistent storage
-    await _loadEmergencyContacts();
+    state = await _contactService.loadEmergencyContacts(state);
 
     // Add default contacts if none exist (for demo purposes)
     if (state.emergencyContacts.isEmpty) {
-      _addDefaultContacts();
+      state = _contactService.addDefaultContacts(state);
     }
 
     // Check SMS permissions on initialization
-    await _checkSmsPermissions();
+    state = await _emergencyService.checkSmsPermissions(state);
 
     // Listen to BLE state changes for sensor data and connection status
     _bleStateSubscription = _bleStateNotifier.stream.listen((bleState) {
@@ -102,9 +70,14 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
       if (bleState.sensorData != null &&
           state.isSafetyModeActive &&
           bleState.isConnected) {
-        detectPotentialThreat(bleState.sensorData!);
+        _checkForThreat(bleState.sensorData!);
       }
     });
+  }
+
+  void _handlePositionUpdate(Position position) {
+    // Update state with new position
+    state = state.copyWith(currentLocation: position);
   }
 
   // Helper method to check if safety mode can be activated
@@ -127,281 +100,134 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         }
       }
 
-      // Start/stop location tracking based on safety mode
-      if (newState) {
-        await _startLocationTracking();
-      } else {
-        await _stopLocationTracking();
+      bool voiceDetectionActive = false;
+
+      // Start/stop voice recognition based on safety mode and settings
+      if (newState && _settingsNotifier.state.voiceDetectionEnabled) {
+        voiceDetectionActive = await _speechRecognitionService.startListening();
+        if (voiceDetectionActive) {
+          debugPrint('✅ Voice recognition started');
+        } else {
+          debugPrint('⚠️ Voice recognition failed to start');
+        }
+      } else if (!newState) {
+        await _speechRecognitionService.stopListening();
+        debugPrint('✅ Voice recognition stopped');
       }
 
-      state = state.copyWith(isLoading: false);
+      // Start/stop location tracking based on safety mode
+      if (newState) {
+        state = await _locationService.startLocationTracking(state);
+      } else {
+        state = _locationService.stopLocationTracking(state);
+      }
+
+      state = state.copyWith(
+        isLoading: false,
+        isVoiceDetectionActive: newState && voiceDetectionActive,
+      );
     } catch (e) {
       state = state.copyWith(
         isSafetyModeActive: !newState, // Revert on error
         isLoading: false,
+        isVoiceDetectionActive: false,
         error: 'Failed to toggle safety mode: ${e.toString()}',
       );
     }
   }
 
-  Future<void> _startLocationTracking() async {
+  // Lock to prevent multiple simultaneous emergency triggers
+  bool _isTriggering = false;
+  // Timestamp of the last emergency trigger
+  DateTime? _lastEmergencyTriggerTime;
+  // Cooldown period between emergency triggers
+  static const Duration _emergencyCooldown = Duration(minutes: 1);
+
+  Future<void> triggerEmergencyAlert() async {
+    final now = DateTime.now();
+
+    // Check if already in emergency state
+    if (state.isEmergencyActive) {
+      debugPrint('⚠️ Emergency already active, ignoring trigger');
+      return;
+    }
+
+    // Check cooldown period
+    if (_lastEmergencyTriggerTime != null) {
+      final timeSinceLastTrigger = now.difference(_lastEmergencyTriggerTime!);
+      if (timeSinceLastTrigger < _emergencyCooldown) {
+        debugPrint(
+          '🕒 Emergency cooldown period active (${timeSinceLastTrigger.inSeconds}s), ignoring trigger',
+        );
+        return;
+      }
+    }
+
+    // Prevent multiple simultaneous triggers
+    if (_isTriggering) {
+      debugPrint('⚠️ Already triggering emergency, ignoring duplicate call');
+      return;
+    }
+
+    _isTriggering = true;
+
     try {
-      // Check permissions
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions are denied');
+      debugPrint('🚨 TRIGGERING EMERGENCY ALERT');
+      _lastEmergencyTriggerTime = now;
+
+      // Get current location for emergency if not already tracking
+      Position? currentLocation;
+      if (state.currentLocation == null) {
+        try {
+          currentLocation = await _locationService.getCurrentLocation();
+        } catch (e) {
+          debugPrint('⚠️ Failed to get location for emergency: $e');
+          // Continue without location
         }
       }
 
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permissions are permanently denied');
-      }
-
-      // Get current location
-      Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10, // Update every 10 meters
-        ),
+      // Trigger emergency through the service
+      state = await _emergencyService.triggerEmergencyAlert(
+        state,
+        currentLocation,
       );
 
-      state = state.copyWith(
-        currentLocation: position,
-        isLocationTracking: true,
-      );
-
-      // Start listening to location updates
-      Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10, // Update every 10 meters
-        ),
-      ).listen((Position position) {
-        state = state.copyWith(currentLocation: position);
-      });
+      debugPrint('✅ Emergency alert triggered successfully');
     } catch (e) {
-      state = state.copyWith(
-        error: 'Failed to start location tracking: ${e.toString()}',
-      );
-    }
-  }
-
-  Future<void> _stopLocationTracking() async {
-    state = state.copyWith(isLocationTracking: false, currentLocation: null);
-  }
-
-  Future<void> triggerEmergencyAlert() async {
-    state = state.copyWith(
-      isEmergencyActive: true,
-      lastEmergencyTime: DateTime.now(),
-      isLoading: true,
-    );
-
-    try {
-      // Send emergency alert to BLE device
-      // await _bleStateNotifier.sendEmergencyAlert();
-
-      // Get current location for emergency
-      if (state.currentLocation == null) {
-        final position = await Geolocator.getCurrentPosition();
-        state = state.copyWith(currentLocation: position);
-      }
-
-      await _sendEmergencyNotifications();
-
-      state = state.copyWith(isLoading: false);
-    } catch (e) {
+      debugPrint('❌ Failed to trigger emergency alert: $e');
       state = state.copyWith(
         isLoading: false,
         error: 'Failed to send emergency alert: ${e.toString()}',
       );
+    } finally {
+      _isTriggering = false;
     }
   }
 
-  Future<void> _sendEmergencyNotifications() async {
-    final settings = _settingsNotifier.state;
-
-    // Only proceed if emergency alerts are enabled
-    if (!settings.emergencyAlertsEnabled) {
-      return;
-    }
-
+  Future<void> _checkForThreat(Map<String, dynamic> sensorData) async {
     try {
-      // Make direct call to topmost priority emergency contact first
-      // but only if emergency alerts are enabled
-      // if (state.emergencyContacts.isNotEmpty &&
-      //     settings.emergencyAlertsEnabled) {
-      //   await _callTopPriorityContact();
-      // }
+      // Use emergency service to detect potential threats
+      final updatedState = await _emergencyService.detectPotentialThreat(
+        state,
+        sensorData,
+      );
 
-      // Send SMS to emergency contacts if enabled and contacts exist
-      if (state.emergencyContacts.isNotEmpty) {
-        await _sendEmergencySMS();
-      }
+      // Update state if there's a detected threat
+      if (updatedState.error != null &&
+          updatedState.error!.contains('Potential threat detected')) {
+        state = updatedState;
 
-      // Send push notifications if enabled
-      await _sendEmergencyPushNotifications();
-
-      // Log the emergency event if data backup is enabled
-      if (settings.dataBackupEnabled) {
-        await _logEmergencyEvent();
-      }
-
-      // Trigger device vibration if enabled
-      if (settings.vibrationEnabled) {
-        await _triggerEmergencyVibration();
-      }
-
-      // Play emergency sound if enabled
-      if (settings.soundEnabled) {
-        await _playEmergencySound();
+        // Start countdown before triggering emergency alert
+        await _startEmergencyCountdown();
       }
     } catch (e) {
-      state = state.copyWith(
-        error: 'Emergency notification failed: ${e.toString()}',
-      );
+      debugPrint('Error detecting threat: $e');
     }
-  }
-
-  Future<void> _sendEmergencySMS() async {
-    final currentLocation = state.currentLocation;
-    final locationText =
-        currentLocation != null
-            ? 'Location: https://maps.google.com/?q=${currentLocation.latitude},${currentLocation.longitude}'
-            : 'Location: Unable to determine location';
-
-    final emergencyMessage = '''
-🚨 EMERGENCY ALERT 🚨
-
-${state.emergencyContacts.length > 1 ? 'This is an automated emergency alert from Nirbhay Safety App.' : 'This is an automated emergency alert.'}
-
-Time: ${DateTime.now().toString()}
-$locationText
-
-Please check on the user immediately or contact emergency services.
-
-- Sent by Nirbhay Safety System
-''';
-
-    try {
-      // Request SMS permissions
-      bool permissionsGranted =
-          await _telephony.requestPhoneAndSmsPermissions ?? false;
-
-      if (!permissionsGranted) {
-        debugPrint('❌ SMS permissions not granted');
-        state = state.copyWith(
-          error:
-              'SMS permissions required to send emergency alerts. Please grant permissions in settings.',
-        );
-        return;
-      }
-
-      // Send SMS to all active emergency contacts
-      final activeContacts =
-          state.emergencyContacts.where((contact) => contact.isActive).toList();
-
-      if (activeContacts.isEmpty) {
-        debugPrint('❌ No active emergency contacts for SMS');
-        return;
-      }
-
-      for (final contact in activeContacts) {
-        try {
-          debugPrint(
-            '📱 Sending emergency SMS to: ${contact.name} (${contact.phone})',
-          );
-          await _telephony.sendSms(
-            to: contact.phone,
-            message: emergencyMessage,
-            isMultipart: true,
-            statusListener: (SendStatus status) {
-              switch (status) {
-                case SendStatus.SENT:
-                  debugPrint('✅ SMS sent successfully to ${contact.name}');
-                  break;
-                case SendStatus.DELIVERED:
-                  debugPrint('✅ SMS delivered to ${contact.name}');
-                  break;
-              }
-            },
-          );
-
-          // Small delay between messages to avoid spam detection
-          await Future.delayed(const Duration(milliseconds: 500));
-        } catch (e) {
-          debugPrint('❌ Failed to send SMS to ${contact.name}: $e');
-          // Continue sending to other contacts even if one fails
-        }
-      }
-
-      debugPrint('📱 Emergency SMS sending completed');
-    } catch (e) {
-      debugPrint('❌ Emergency SMS sending failed: $e');
-      state = state.copyWith(
-        error: 'Failed to send emergency SMS: ${e.toString()}',
-      );
-    }
-  }
-
-  Future<void> _sendEmergencyPushNotifications() async {
-    // TODO: Implement push notification sending
-    // This would use Firebase Cloud Messaging or similar service
-    debugPrint('Emergency push notifications would be sent');
-  }
-
-  Future<void> _logEmergencyEvent() async {
-    // TODO: Implement emergency event logging
-    // This would save to local database and/or cloud storage
-    final emergencyLog = {
-      'timestamp': DateTime.now().toIso8601String(),
-      'location':
-          state.currentLocation != null
-              ? {
-                'latitude': state.currentLocation!.latitude,
-                'longitude': state.currentLocation!.longitude,
-              }
-              : null,
-      'emergency_contacts_notified':
-          state.emergencyContacts.map((c) => c.name).toList(),
-      'user_triggered': true, // Could be false for automatic detection
-    };
-
-    debugPrint('Emergency event logged: $emergencyLog');
-  }
-
-  Future<void> _triggerEmergencyVibration() async {
-    // TODO: Implement device vibration
-    // This would use HapticFeedback or vibration plugin
-    debugPrint('Emergency vibration triggered');
-  }
-
-  Future<void> _playEmergencySound() async {
-    // TODO: Implement emergency sound
-    // This would use audioplayers or similar plugin
-    debugPrint('Emergency sound would play');
   }
 
   Future<void> cancelEmergencyAlert() async {
-    state = state.copyWith(isEmergencyActive: false, isLoading: true);
-
     try {
-      final settings = _settingsNotifier.state;
-
-      // Only send cancellation notifications if emergency alerts are enabled
-      if (settings.emergencyAlertsEnabled &&
-          state.emergencyContacts.isNotEmpty) {
-        await _sendEmergencyCancellationSMS();
-      }
-
-      // Log cancellation if data backup is enabled
-      if (settings.dataBackupEnabled) {
-        await _logEmergencyCancellation();
-      }
-
-      state = state.copyWith(isLoading: false);
+      state = await _emergencyService.cancelEmergencyAlert(state);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -410,204 +236,72 @@ Please check on the user immediately or contact emergency services.
     }
   }
 
-  Future<void> _sendEmergencyCancellationSMS() async {
-    final cancellationMessage = '''
-✅ EMERGENCY CANCELLED ✅
-
-The emergency alert has been cancelled by the user.
-
-Time: ${DateTime.now().toString()}
-
-The user is now safe.
-
-- Sent by Nirbhay Safety System
-''';
-
-    try {
-      // Check if SMS permissions are available
-      bool permissionsGranted =
-          await _telephony.requestPhoneAndSmsPermissions ?? false;
-
-      if (!permissionsGranted) {
-        debugPrint('❌ SMS permissions not granted for cancellation');
-        return;
-      }
-
-      // Send cancellation SMS to all active emergency contacts
-      final activeContacts =
-          state.emergencyContacts.where((contact) => contact.isActive).toList();
-
-      if (activeContacts.isEmpty) {
-        debugPrint('❌ No active emergency contacts for cancellation SMS');
-        return;
-      }
-
-      for (final contact in activeContacts) {
-        try {
-          debugPrint(
-            '📱 Sending cancellation SMS to: ${contact.name} (${contact.phone})',
-          );
-
-          await _telephony.sendSms(
-            to: contact.phone,
-            message: cancellationMessage,
-            isMultipart: true,
-            statusListener: (SendStatus status) {
-              switch (status) {
-                case SendStatus.SENT:
-                  debugPrint(
-                    '✅ Cancellation SMS sent successfully to ${contact.name}',
-                  );
-                  break;
-                case SendStatus.DELIVERED:
-                  debugPrint('✅ Cancellation SMS delivered to ${contact.name}');
-                  break;
-              }
-            },
-          );
-
-          // Small delay between messages
-          await Future.delayed(const Duration(milliseconds: 500));
-        } catch (e) {
-          debugPrint(
-            '❌ Failed to send cancellation SMS to ${contact.name}: $e',
-          );
-          // Continue sending to other contacts even if one fails
-        }
-      }
-
-      debugPrint('📱 Emergency cancellation SMS sending completed');
-    } catch (e) {
-      debugPrint('❌ Emergency cancellation SMS sending failed: $e');
-    }
-  }
-
-  Future<void> _logEmergencyCancellation() async {
-    // TODO: Implement emergency cancellation logging
-    final cancellationLog = {
-      'timestamp': DateTime.now().toIso8601String(),
-      'original_emergency_time': state.lastEmergencyTime?.toIso8601String(),
-      'cancelled_by_user': true,
-    };
-
-    debugPrint('Emergency cancellation logged: $cancellationLog');
-  }
-
   void addEmergencyContact(EmergencyContact contact) {
-    final updatedContacts = [...state.emergencyContacts, contact];
-    state = state.copyWith(emergencyContacts: updatedContacts);
-    _saveEmergencyContacts();
+    state = _contactService.addEmergencyContact(state, contact);
   }
 
   void removeEmergencyContact(String contactId) {
-    final updatedContacts =
-        state.emergencyContacts.where((c) => c.id != contactId).toList();
-    state = state.copyWith(emergencyContacts: updatedContacts);
-    _saveEmergencyContacts();
+    state = _contactService.removeEmergencyContact(state, contactId);
   }
 
   void updateEmergencyContact(EmergencyContact updatedContact) {
-    final updatedContacts =
-        state.emergencyContacts.map((contact) {
-          return contact.id == updatedContact.id ? updatedContact : contact;
-        }).toList();
-    state = state.copyWith(emergencyContacts: updatedContacts);
-    _saveEmergencyContacts();
-  }
-
-  Future<void> _loadEmergencyContacts() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final contactsJson = prefs.getStringList('emergency_contacts') ?? [];
-
-      final contacts =
-          contactsJson.map((jsonStr) {
-            final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-            return EmergencyContact.fromJson(json);
-          }).toList();
-
-      state = state.copyWith(emergencyContacts: contacts);
-    } catch (e) {
-      debugPrint('Error loading emergency contacts: $e');
-    }
-  }
-
-  Future<void> _saveEmergencyContacts() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final contactsJson =
-          state.emergencyContacts
-              .map((contact) => jsonEncode(contact.toJson()))
-              .toList();
-
-      await prefs.setStringList('emergency_contacts', contactsJson);
-    } catch (e) {
-      debugPrint('Error saving emergency contacts: $e');
-    }
+    state = _contactService.updateEmergencyContact(state, updatedContact);
   }
 
   void clearError() {
     state = state.copyWith(error: null);
   }
 
+  /// Request SMS permissions manually (can be called from UI)
+  Future<bool> requestSmsPermissions() async {
+    try {
+      bool permissionsGranted = await _emergencyService.requestSmsPermissions();
+
+      if (permissionsGranted) {
+        // Clear any permission-related errors
+        if (state.error != null && state.error!.contains('SMS permissions')) {
+          state = state.copyWith(error: null);
+        }
+      } else {
+        state = state.copyWith(
+          error: 'SMS permissions denied. Emergency SMS alerts will not work.',
+        );
+      }
+
+      return permissionsGranted;
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to request SMS permissions: ${e.toString()}',
+      );
+      return false;
+    }
+  }
+
+  /// Check if SMS permissions are currently granted
+  Future<bool> get hasSmsPermissions async {
+    return await _emergencyService.hasSmsPermissions();
+  }
+
+  /// Send a test SMS to verify functionality
+  Future<bool> sendTestSms(String phoneNumber) async {
+    try {
+      await _emergencyService.sendTestSms(phoneNumber);
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: 'Failed to send test SMS: ${e.toString()}');
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     _bleStateSubscription?.cancel();
+    _speechRecognitionService.stopListening();
     super.dispose();
-  }
-
-  // Automatic threat detection based on sensor data
-  Future<void> detectPotentialThreat(Map<String, dynamic> sensorData) async {
-    final settings = _settingsNotifier.state;
-
-    // Only proceed if automatic detection is enabled
-    if (!settings.automaticDetectionEnabled || !state.isSafetyModeActive) {
-      return;
-    }
-
-    // Analyze sensor data for threat patterns
-    bool threatDetected = _analyzeSensorData(
-      sensorData,
-      settings.alertSensitivity,
-    );
-
-    if (threatDetected) {
-      // Start countdown before triggering emergency alert
-      await _startEmergencyCountdown();
-    }
-  }
-
-  bool _analyzeSensorData(Map<String, dynamic> sensorData, String sensitivity) {
-    // TODO: Implement actual threat detection algorithm
-    // This would analyze heart rate, movement patterns, etc.
-    // Sensitivity levels: "Low", "Medium", "High"
-
-    // Example logic (placeholder):
-    final heartRate = sensorData['heart_rate'] as int? ?? 0;
-    final suddenMovement = sensorData['sudden_movement'] as bool? ?? false;
-    final impactDetected = sensorData['impact_detected'] as bool? ?? false;
-
-    switch (sensitivity) {
-      case 'Low':
-        return impactDetected && heartRate > 120;
-      case 'Medium':
-        return (impactDetected && heartRate > 110) ||
-            (suddenMovement && heartRate > 130);
-      case 'High':
-        return impactDetected || (suddenMovement && heartRate > 100);
-      default:
-        return false;
-    }
   }
 
   Future<void> _startEmergencyCountdown() async {
     final settings = _settingsNotifier.state;
-
-    // Start countdown based on settings
-    state = state.copyWith(
-      error:
-          'Potential threat detected! Emergency alert will trigger in ${settings.sosCountdownTime} seconds. Tap to cancel.',
-    );
 
     // TODO: Implement actual countdown with user interaction
     // This would show a countdown dialog/screen where user can cancel
@@ -620,324 +314,120 @@ The user is now safe.
     }
   }
 
-  Future<void> _callTopPriorityContact() async {
-    // Validate that we have emergency contacts
-    if (state.emergencyContacts.isEmpty) {
-      debugPrint('❌ No emergency contacts available for calling');
-      state = state.copyWith(
-        error:
-            'No emergency contacts configured. Please add emergency contacts in settings.',
-      );
-      return;
-    }
-
+  /// Initialize speech recognition service
+  Future<void> _initSpeechRecognition() async {
     try {
-      // Get active contacts sorted by priority
-      final activeContacts =
-          state.emergencyContacts.where((contact) => contact.isActive).toList()
-            ..sort((a, b) => a.priority.compareTo(b.priority));
+      // Initialize the speech recognition service
+      final initialized = await _speechRecognitionService.initialize();
 
-      if (activeContacts.isEmpty) {
-        debugPrint('❌ No active emergency contacts available for calling');
+      if (!initialized) {
+        debugPrint('⚠️ Speech recognition initialization failed');
         state = state.copyWith(
-          error:
-              'No active emergency contacts configured. Please activate emergency contacts in settings.',
+          error: 'Voice detection not available on this device.',
         );
         return;
       }
 
-      // Get the first (highest priority) emergency contact
-      final topPriorityContact = activeContacts.first;
+      // Emergency handling lock to prevent multiple simultaneous triggers
+      bool isHandlingEmergency = false;
 
-      // Validate the phone number format (basic validation)
-      if (!_isValidPhoneNumber(topPriorityContact.phone)) {
-        debugPrint(
-          '❌ Invalid phone number format: ${topPriorityContact.phone}',
-        );
-        state = state.copyWith(
-          error:
-              'Invalid emergency contact number. Please check your emergency contacts.',
-        );
-        return;
-      }
-
-      debugPrint(
-        '📞 Attempting emergency call to top priority contact: ${topPriorityContact.name} (${topPriorityContact.phone})',
-      );
-
-      // Attempt to make the direct call
-      bool? callResult = await FlutterPhoneDirectCaller.callNumber(
-        topPriorityContact.phone,
-      );
-
-      if (callResult == true) {
-        debugPrint(
-          '✅ Emergency call successfully initiated to: ${topPriorityContact.name}',
-        );
-
-        // Log the successful call attempt if data backup is enabled
-        final settings = _settingsNotifier.state;
-        if (settings.dataBackupEnabled) {
-          await _logEmergencyCall(topPriorityContact, true);
-        }
-      } else {
-        debugPrint(
-          '❌ Failed to initiate emergency call to: ${topPriorityContact.name}',
-        );
-
-        // Try calling the next contact if available
-        if (activeContacts.length > 1) {
-          await _trySecondaryEmergencyCall(activeContacts);
+      // Set up the callback for when an emergency is detected through voice
+      _speechRecognitionService.onEmergencyDetected = () async {
+        // Prevent multiple simultaneous emergency handling
+        if (isHandlingEmergency) {
+          debugPrint(
+            '⚠️ Already handling an emergency, ignoring additional trigger',
+          );
+          return;
         }
 
-        // Log the failure
-        final settings = _settingsNotifier.state;
-        if (settings.dataBackupEnabled) {
-          await _logEmergencyCall(topPriorityContact, false);
-        }
+        // Only trigger if safety mode is active and not already in emergency
+        if (state.isSafetyModeActive && !state.isEmergencyActive) {
+          isHandlingEmergency = true;
 
-        // Set a non-critical error (don't stop other emergency actions)
-        state = state.copyWith(
-          error:
-              'Unable to place emergency call to primary contact. SMS and other alerts are still being sent.',
-        );
-      }
-    } catch (e) {
-      debugPrint('🚨 Error during emergency call: $e');
+          try {
+            debugPrint('🚨 Emergency detected through voice keywords!');
 
-      // Try secondary contact if available
-      final activeContacts =
-          state.emergencyContacts.where((contact) => contact.isActive).toList()
-            ..sort((a, b) => a.priority.compareTo(b.priority));
+            // Update state with emergency notice
+            state = state.copyWith(
+              error:
+                  'Emergency voice command detected! Triggering emergency alert.',
+            );
 
-      if (activeContacts.length > 1) {
-        await _trySecondaryEmergencyCall(activeContacts);
-      }
+            // Trigger the emergency alert
+            await triggerEmergencyAlert();
 
-      // Don't let call failure stop other emergency notifications
-      state = state.copyWith(
-        error:
-            'Emergency call failed: ${e.toString()}. Other alerts are still being sent.',
-      );
-    }
-  }
-
-  Future<void> _trySecondaryEmergencyCall(
-    List<EmergencyContact> activeContacts,
-  ) async {
-    if (activeContacts.length < 2) return;
-
-    try {
-      final secondaryContact = activeContacts[1];
-      debugPrint(
-        'Trying secondary emergency contact: ${secondaryContact.name} (${secondaryContact.phone})',
-      );
-
-      bool? callResult = await FlutterPhoneDirectCaller.callNumber(
-        secondaryContact.phone,
-      );
-
-      if (callResult == true) {
-        debugPrint(
-          '✅ Emergency call successfully initiated to secondary contact: ${secondaryContact.name}',
-        );
-
-        final settings = _settingsNotifier.state;
-        if (settings.dataBackupEnabled) {
-          await _logEmergencyCall(secondaryContact, true, isSecondary: true);
-        }
-      } else {
-        debugPrint(
-          '❌ Failed to call secondary contact: ${secondaryContact.name}',
-        );
-
-        final settings = _settingsNotifier.state;
-        if (settings.dataBackupEnabled) {
-          await _logEmergencyCall(secondaryContact, false, isSecondary: true);
-        }
-      }
-    } catch (e) {
-      debugPrint('🚨 Error calling secondary contact: $e');
-    }
-  }
-
-  Future<void> _logEmergencyCall(
-    EmergencyContact contact,
-    bool success, {
-    bool isSecondary = false,
-  }) async {
-    final callLog = {
-      'timestamp': DateTime.now().toIso8601String(),
-      'contact_id': contact.id,
-      'contact_name': contact.name,
-      'contact_phone': contact.phone,
-      'contact_relationship': contact.relationship,
-      'call_successful': success,
-      'is_secondary_contact': isSecondary,
-      'call_type': 'emergency_auto_call',
-    };
-
-    debugPrint('Emergency call logged: $callLog');
-  }
-
-  /// Validates if a phone number has a basic valid format
-  /// This is a simple validation - you might want to use a more robust solution
-  bool _isValidPhoneNumber(String phoneNumber) {
-    // Remove all non-digit characters for validation
-    final digitsOnly = phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
-
-    // Check if it has at least 7 digits and at most 15 digits (international standard)
-    if (digitsOnly.length < 7 || digitsOnly.length > 15) {
-      return false;
-    }
-
-    // Check if the original contains valid phone characters
-    final validChars = RegExp(r'^[\d\s\+\(\)\-\.]+$');
-    return validChars.hasMatch(phoneNumber);
-  }
-
-  void _addDefaultContacts() {
-    final defaultContacts = [
-      EmergencyContact(
-        id: 'default_1',
-        name: 'Mom',
-        phone: '+1 234 567 8900',
-        relationship: 'Family',
-        isActive: true,
-        priority: 1,
-      ),
-      EmergencyContact(
-        id: 'default_2',
-        name: 'Dad',
-        phone: '+1 234 567 8901',
-        relationship: 'Family',
-        isActive: true,
-        priority: 2,
-      ),
-      EmergencyContact(
-        id: 'default_3',
-        name: 'Best Friend Sarah',
-        phone: '+1 234 567 8902',
-        relationship: 'Friend',
-        isActive: false,
-        priority: 3,
-      ),
-    ];
-
-    state = state.copyWith(emergencyContacts: defaultContacts);
-    _saveEmergencyContacts();
-  }
-
-  Future<void> _checkSmsPermissions() async {
-    try {
-      bool permissionsGranted =
-          await _telephony.requestPhoneAndSmsPermissions ?? false;
-
-      if (!permissionsGranted) {
-        debugPrint(
-          '⚠️ SMS permissions not granted. Emergency SMS may not work.',
-        );
-        state = state.copyWith(
-          error:
-              'SMS permissions required for emergency alerts. Grant permissions in app settings.',
-        );
-      } else {
-        debugPrint('✅ SMS permissions granted');
-      }
-    } catch (e) {
-      debugPrint('❌ Error checking SMS permissions: $e');
-    }
-  }
-
-  /// Request SMS permissions manually (can be called from UI)
-  Future<bool> requestSmsPermissions() async {
-    try {
-      bool permissionsGranted =
-          await _telephony.requestPhoneAndSmsPermissions ?? false;
-
-      if (permissionsGranted) {
-        // Clear any permission-related errors
-        if (state.error != null && state.error!.contains('SMS permissions')) {
-          state = state.copyWith(error: null);
-        }
-        debugPrint('✅ SMS permissions granted by user');
-      } else {
-        debugPrint('❌ SMS permissions denied by user');
-        state = state.copyWith(
-          error: 'SMS permissions denied. Emergency SMS alerts will not work.',
-        );
-      }
-
-      return permissionsGranted;
-    } catch (e) {
-      debugPrint('❌ Error requesting SMS permissions: $e');
-      state = state.copyWith(
-        error: 'Failed to request SMS permissions: ${e.toString()}',
-      );
-      return false;
-    }
-  }
-
-  /// Check if SMS permissions are currently granted
-  Future<bool> get hasSmsPermissions async {
-    try {
-      // Check if we can send SMS (this is a simple way to check permissions)
-      bool permissionsGranted =
-          await _telephony.requestPhoneAndSmsPermissions ?? false;
-      return permissionsGranted;
-    } catch (e) {
-      debugPrint('❌ Error checking SMS permissions: $e');
-      return false;
-    }
-  }
-
-  /// Send a test SMS to verify functionality
-  Future<bool> sendTestSms(String phoneNumber) async {
-    try {
-      bool permissionsGranted =
-          await _telephony.requestPhoneAndSmsPermissions ?? false;
-
-      if (!permissionsGranted) {
-        state = state.copyWith(
-          error: 'SMS permissions required to send test message.',
-        );
-        return false;
-      }
-
-      final testMessage = '''
-📱 TEST MESSAGE from Nirbhay Safety App
-
-This is a test message to verify that SMS functionality is working correctly.
-
-Time: ${DateTime.now().toString()}
-
-If you received this message, emergency SMS alerts are properly configured.
-
-- Nirbhay Safety System
-''';
-
-      await _telephony.sendSms(
-        to: phoneNumber,
-        message: testMessage,
-        isMultipart: true,
-        statusListener: (SendStatus status) {
-          switch (status) {
-            case SendStatus.SENT:
-              debugPrint('✅ Test SMS sent successfully');
-              break;
-            case SendStatus.DELIVERED:
-              debugPrint('✅ Test SMS delivered successfully');
-              break;
+            // Add delay before allowing another emergency
+            await Future.delayed(const Duration(seconds: 10));
+          } catch (e) {
+            debugPrint('❌ Error handling voice emergency: $e');
+          } finally {
+            // Release emergency handling lock
+            isHandlingEmergency = false;
           }
-        },
-      );
+        } else {
+          debugPrint(
+            '⚠️ Voice emergency ignored: safety mode inactive or emergency already active',
+          );
+        }
+      };
 
-      debugPrint('📱 Test SMS sent to: $phoneNumber');
-      return true;
+      // Set up debug callback for detected words (for debugging only)
+      _speechRecognitionService.onSpeechResult = (text) {
+        debugPrint('🔊 Speech recognized: $text');
+      };
+
+      debugPrint('✅ Speech recognition service initialized successfully');
     } catch (e) {
-      debugPrint('❌ Failed to send test SMS: $e');
-      state = state.copyWith(error: 'Failed to send test SMS: ${e.toString()}');
+      debugPrint('❌ Failed to initialize speech recognition: $e');
+      state = state.copyWith(
+        error: 'Voice detection setup failed: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Start speech recognition manually
+  Future<bool> startVoiceDetection() async {
+    try {
+      final started = await _speechRecognitionService.startListening();
+
+      if (started) {
+        debugPrint('✅ Voice detection started manually');
+        state = state.copyWith(isVoiceDetectionActive: true);
+      } else {
+        state = state.copyWith(
+          error: 'Failed to start voice detection',
+          isVoiceDetectionActive: false,
+        );
+      }
+
+      return started;
+    } catch (e) {
+      debugPrint('❌ Error starting voice detection: $e');
+      state = state.copyWith(
+        error: 'Voice detection error: ${e.toString()}',
+        isVoiceDetectionActive: false,
+      );
       return false;
     }
+  }
+
+  /// Stop speech recognition manually
+  Future<void> stopVoiceDetection() async {
+    try {
+      await _speechRecognitionService.stopListening();
+      debugPrint('✅ Voice detection stopped manually');
+      state = state.copyWith(isVoiceDetectionActive: false);
+    } catch (e) {
+      debugPrint('❌ Error stopping voice detection: $e');
+      state = state.copyWith(
+        error: 'Error stopping voice detection: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Check if speech recognition is available on this device
+  Future<bool> isVoiceDetectionAvailable() async {
+    return await _speechRecognitionService.isAvailable();
   }
 }

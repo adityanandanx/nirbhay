@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nirbhay_flutter/models/safety_state.dart';
 import '../services/ble_service.dart';
 import 'auth_provider.dart';
 import 'ble_provider.dart';
