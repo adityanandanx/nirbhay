@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
 import '../../providers/app_providers.dart';
 import '../../providers/user_provider.dart';
@@ -20,13 +21,123 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  Timer? _predictionTimer;
+  final List<List<double>> _sensorDataBuffer = [];
+  final FightFlightPredictor _predictor = FightFlightPredictor();
+  StreamSubscription? _bleDataSubscription;
+
   @override
   void initState() {
     super.initState();
     // Initialize BLE when screen loads
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(bleStateProvider.notifier).initialize();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Initialize BLE via the provider
+      await ref.read(bleStateProvider.notifier).initialize();
+
+      // Load the predictor model in advance
+      await _predictor.load();
+
+      // Setup data collection and prediction timer
+      _setupBLEDataCollection();
+      _setupPredictionTimer();
     });
+  }
+
+  void _setupBLEDataCollection() {
+    // Monitor BLE state for sensor data updates
+    _bleDataSubscription = ref.read(bleStateProvider.notifier).stream.listen((
+      bleState,
+    ) {
+      if (bleState.sensorData != null &&
+          ref.read(safetyStateProvider).isSafetyModeActive) {
+        _processBLEData(bleState.sensorData!);
+      }
+    });
+  }
+
+  void _processBLEData(Map<String, dynamic> data) {
+    // Convert JSON data to the format expected by the predictor
+    // Format: [hr, ax, ay, az, gx, gy, gz]
+    try {
+      final List<double> sensorReading = [];
+
+      // Add heart rate
+      sensorReading.add(data['heartRate']?.toDouble() ?? 0.0);
+
+      // Add accelerometer data
+      if (data['accel'] != null) {
+        sensorReading.add(data['accel']['x']?.toDouble() ?? 0.0);
+        sensorReading.add(data['accel']['y']?.toDouble() ?? 0.0);
+        sensorReading.add(data['accel']['z']?.toDouble() ?? 0.0);
+      } else {
+        sensorReading.addAll([0.0, 0.0, 0.0]);
+      }
+
+      // Add gyroscope data
+      if (data['gyro'] != null) {
+        sensorReading.add(data['gyro']['x']?.toDouble() ?? 0.0);
+        sensorReading.add(data['gyro']['y']?.toDouble() ?? 0.0);
+        sensorReading.add(data['gyro']['z']?.toDouble() ?? 0.0);
+      } else {
+        sensorReading.addAll([0.0, 0.0, 0.0]);
+      }
+
+      // Add to buffer
+      _sensorDataBuffer.add(sensorReading);
+
+      // Keep only the most recent 8 readings
+      if (_sensorDataBuffer.length > 8) {
+        _sensorDataBuffer.removeAt(0);
+      }
+    } catch (e) {
+      print('Error processing BLE data: $e');
+    }
+  }
+
+  void _setupPredictionTimer() {
+    _predictionTimer = Timer.periodic(const Duration(seconds: 10), (
+      timer,
+    ) async {
+      // Only run prediction if safety mode is active and we have enough data
+      if (ref.read(safetyStateProvider).isSafetyModeActive &&
+          _sensorDataBuffer.length == 8) {
+        try {
+          // Clone the buffer to avoid modification during prediction
+          final batchData = List<List<double>>.from(_sensorDataBuffer);
+          final result = await _predictor.predict(batchData);
+          debugPrint("PREDICTED $result");
+
+          // Handle the prediction result
+          _handlePredictionResult(result);
+        } catch (e) {
+          print('Error during fight/flight prediction: $e');
+        }
+      }
+    });
+  }
+
+  void _handlePredictionResult(String result) {
+    // If the result indicates fight-or-flight response, show an alert
+    if (result.contains('Atypical')) {
+      // Log the detection
+      debugPrint('Fight-or-flight response detected: $result');
+
+      // Optionally show a notification to the user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Detected potential stress response: $result'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _predictionTimer?.cancel();
+    _bleDataSubscription?.cancel();
+    super.dispose();
   }
 
   void _navigateToBLEConnection() {
@@ -173,16 +284,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // ignore: use_build_context_synchronously
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: Text('Fight/Flight Prediction'),
-                        content: Text(result),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text('OK'),
+                      builder:
+                          (context) => AlertDialog(
+                            title: Text('Fight/Flight Prediction'),
+                            content: Text(result),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: Text('OK'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
                     );
                   },
                   child: Text('Test Fight/Flight Predictor'),
