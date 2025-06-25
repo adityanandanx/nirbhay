@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "Arduino_GFX_Library.h"
+#include <Arduino.h>
 #include "pin_config.h"
 #include <Wire.h>
 #include "MAX30105.h"
@@ -10,6 +11,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include "SensorQMI8658.hpp"
+#include "Arduino_DriveBus_Library.h"
+
 // Device and service identifiers
 #define DEVICE_NAME "Nirbhay_Device"
 #define SERVICE_UUID "12345678-1234-1234-1234-123456789abc"
@@ -24,11 +27,25 @@ BLECharacteristic* pCharacteristic = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 bool emergencyButton = false;
-
 // Display setup
 Arduino_DataBus *bus = new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCK, LCD_MOSI);
 Arduino_GFX *gfx = new Arduino_ST7789(bus, LCD_RST /* RST */,
                                      0 /* rotation */, true /* IPS */, LCD_WIDTH, LCD_HEIGHT, 0, 20, 0, 0);
+
+// Touch sensor setup
+std::shared_ptr<Arduino_IIC_DriveBus> IIC_Bus =
+  std::make_shared<Arduino_HWIIC>(IIC_SDA, IIC_SCL, &Wire);
+
+void Arduino_IIC_Touch_Interrupt(void);
+
+std::unique_ptr<Arduino_IIC> CST816T(new Arduino_CST816x(IIC_Bus, CST816T_DEVICE_ADDRESS,
+                                                         TP_RST, TP_INT, Arduino_IIC_Touch_Interrupt));
+
+void Arduino_IIC_Touch_Interrupt(void) {
+  CST816T->IIC_Interrupt_Flag = true;
+}
+bool touchInProgress = false;
+
 
 // Heart rate calculation variables 
 const byte RATE_SIZE = 4;  // Increase for more averaging
@@ -68,6 +85,44 @@ IMUdata gyr;    // Gyroscope data
 bool imuInitialized = false;
 unsigned long lastIMUCheck = 0;
 
+bool demoMode = false;
+unsigned long demoStartTime = 0;
+unsigned long demoDuration = 15000;  // 15 seconds of demo
+
+// Demo button location and size
+#define DEMO_BUTTON_X 70     // Center bottom placement
+#define DEMO_BUTTON_Y 250    // Near bottom of screen
+#define DEMO_BUTTON_W 140    // Make it wide enough to tap easily
+#define DEMO_BUTTON_H 40     // Make it tall enough to tap easily
+int32_t lastTouchX = 0;
+int32_t lastTouchY = 0;
+bool touchActive = false;
+unsigned long lastTouchTime = 0;
+void drawDemoButton(bool active) {
+  gfx->fillRect(DEMO_BUTTON_X-2, DEMO_BUTTON_Y-2, DEMO_BUTTON_W+4, DEMO_BUTTON_H+4, BLACK);
+  
+  if (active) {
+    gfx->fillRoundRect(DEMO_BUTTON_X, DEMO_BUTTON_Y, DEMO_BUTTON_W, DEMO_BUTTON_H, 8, RED);
+  } else {
+    gfx->fillRoundRect(DEMO_BUTTON_X, DEMO_BUTTON_Y, DEMO_BUTTON_W, DEMO_BUTTON_H, 8, BLUE);
+  }
+  
+  gfx->setTextColor(WHITE);
+  gfx->setTextSize(2);  // Larger text for better visibility
+  
+  // Center the text in the button
+  if (active) {
+    gfx->setCursor(DEMO_BUTTON_X + 15, DEMO_BUTTON_Y + 12);
+    gfx->println("STOP DEMO");
+  } else {
+    gfx->setCursor(DEMO_BUTTON_X + 25, DEMO_BUTTON_Y + 12);
+    gfx->println("DEMO");
+  }
+}
+bool isTouchInDemoButton(int32_t x, int32_t y) {
+  return (x >= DEMO_BUTTON_X && x <= DEMO_BUTTON_X + DEMO_BUTTON_W &&
+          y >= DEMO_BUTTON_Y && y <= DEMO_BUTTON_Y + DEMO_BUTTON_H);
+}
 void sendSensorData() {
   if (pCharacteristic) {
     // Get current sensor values
@@ -106,6 +161,7 @@ void sendSensorData() {
 
     Serial.println("Sent: " + data);
   }
+  
 }
 
 // BLE callbacks
@@ -291,10 +347,100 @@ void setup() {
   
   delay(1000);
 }
+void simulateDemoData(unsigned long currentMillis) {
+  float demoProgress = (float)(currentMillis - demoStartTime) / demoDuration;
+  if (demoProgress < 0.2) {
+    // Quick rise (0-20% of demo time)
+    beatAvg = 70 + (int)(60.0 * demoProgress / 0.2);
+  } else {
+    beatAvg = 130 + random(-5, 6);  
+    emergencyButton = true;
+  } 
+  
+  // Simulate SpO2 drop
+  if (demoProgress < 0.2) {
+    spo2 = 98 - (int)(10.0 * demoProgress / 0.2);
+  } else{
+    spo2 = 88 + random(-2, 3); 
+    validSPO2 = 1;   
+  } 
+  validSPO2 = 1; 
+  
+  // Simulate accelerometer and gyroscope data 
+  if (imuInitialized) {
+    float intensityFactor = 1.0;
+    if (demoProgress > 0.2 && demoProgress < 0.6) {
+      intensityFactor = 3.0;  
+    }
+    
+    float phase = demoProgress * 2 * PI * 2; 
+    
+    // Simulate accelerometer data (like someone is shaking or falling)
+    acc.x = sin(phase * 5) * 2.0 * intensityFactor + random(-10, 11) / 10.0;
+    acc.y = cos(phase * 6) * 1.8 * intensityFactor + random(-10, 11) / 10.0;
+    acc.z = sin(phase * 4 + PI/4) * 2.2 * intensityFactor + random(-10, 11) / 10.0;
+    
+    // Simulate gyroscope data (like device is rotating)
+    gyr.x = sin(phase * 3) * 20.0 * intensityFactor + random(-5, 6);
+    gyr.y = cos(phase * 4) * 15.0 * intensityFactor + random(-5, 6);
+    gyr.z = sin(phase * 2.5) * 25.0 * intensityFactor + random(-5, 6);
+  }
+}
 
 void loop() {
   unsigned long currentMillis = millis();
+  int32_t touchX = CST816T->IIC_Read_Device_Value(CST816T->Arduino_IIC_Touch::Value_Information::TOUCH_COORDINATE_X);
+  int32_t touchY = CST816T->IIC_Read_Device_Value(CST816T->Arduino_IIC_Touch::Value_Information::TOUCH_COORDINATE_Y);
+  bool currentTouch = (touchX > 0 && touchY > 0);
   
+  if (currentTouch) {
+    Serial.printf("Touch detected at X:%d Y:%d\n", touchX, touchY);
+  }
+  if (currentTouch && !touchInProgress && (currentMillis - lastTouchTime > 300)) {
+    // NEW touch detected - check if it's on the demo button
+    touchInProgress = true;
+    lastTouchTime = currentMillis;
+  if (currentTouch) {
+    // Show a small red dot where touch is detected (in next display update)
+    gfx->fillCircle(touchX, touchY, 3, RED);
+    
+    // Debug output with more details
+    Serial.printf("Touch at X:%d Y:%d, Demo button: X:%d-%d Y:%d-%d\n", 
+                  touchX, touchY, 
+                  DEMO_BUTTON_X, DEMO_BUTTON_X + DEMO_BUTTON_W,
+                  DEMO_BUTTON_Y, DEMO_BUTTON_Y + DEMO_BUTTON_H);
+  }
+    
+    if (isTouchInDemoButton(touchX, touchY)) {
+      // Toggle demo mode
+      demoMode = !demoMode;
+      
+      if (demoMode) {
+        // Start demo mode
+        demoStartTime = currentMillis;
+        Serial.println("Demo mode activated!");
+      } else {
+        // Exit demo mode
+        emergencyButton = false; // Clear emergency when exiting demo
+        Serial.println("Demo mode deactivated!");
+      }
+    }
+  } 
+  else if (!currentTouch && touchInProgress) {
+    // Touch just ended
+    touchInProgress = false;
+  }
+  if (demoMode && (currentMillis - demoStartTime > demoDuration)) {
+    demoMode = false;
+    emergencyButton = false; // Clear emergency when demo ends
+    Serial.println("Demo mode ended automatically");
+  }
+  
+  // If in demo mode, simulate data instead of reading from sensors
+  if (demoMode) {
+    simulateDemoData(currentMillis);
+    fingerPresent = true; // Force finger presence during demo
+  }
   // Get the latest sensor readings
   uint32_t red = particleSensor.getRed();
   uint32_t ir = particleSensor.getIR();
@@ -428,9 +574,9 @@ void loop() {
   Serial.println("Collection canceled - finger removed");
 }
 
-  
+
+  // Updating display 
   bool forceUpdate = fingerStatusChanged;
-  // Update display (every 250ms)
   if (currentMillis - lastDisplay > 500 || fingerStatusChanged) {
     lastDisplay = currentMillis;
     gfx->fillScreen(BLACK);
@@ -439,7 +585,6 @@ void loop() {
     gfx->setCursor(10, 10);
     gfx->setTextColor(WHITE);
     gfx->setTextSize(2);
-    gfx->println("Health Monitor");
     
     // Show finger detection
     gfx->setCursor(10, 50);
@@ -454,10 +599,15 @@ void loop() {
     // Show heart rate
     gfx->setCursor(10, 90);
     gfx->setTextColor(RED);
-    if (beatAvg > 0 && fingerPresent) {
+    if (demoMode || (beatAvg > 0 && fingerPresent)) {
       gfx->print("HR: ");
-      gfx->print(beatAvg);
-      gfx->println(" BPM");
+      if (demoMode) {
+        gfx->print(beatAvg);
+        gfx->println(" BPM (DEMO)");
+      } else {
+        gfx->print(beatAvg);
+        gfx->println(" BPM");
+      }
     } else {
       gfx->println("HR: --");
     }
@@ -465,22 +615,26 @@ void loop() {
     // Show SpO2
     gfx->setCursor(10, 130);
     gfx->setTextColor(BLUE);
-    if (validSPO2 && fingerPresent) {
+    if (demoMode || (validSPO2 && fingerPresent)) {
       gfx->print("SpO2: ");
-      gfx->print(spo2);
-      gfx->println("%");
+      if (demoMode) {
+        gfx->print(spo2);
+        gfx->println("% (DEMO)");
+      } else {
+        gfx->print(spo2);
+        gfx->println("%");
+      }
     } else {
       gfx->println("SpO2: --");
     }
     if (imuInitialized) {
-      // Move cursor down for IMU data
       gfx->setCursor(10, 190);
       gfx->setTextColor(YELLOW);
       gfx->println("IMU Data:");
       
       // Accelerometer
       gfx->setCursor(10, 210);
-      gfx->setTextSize(1); // Smaller text for IMU data
+      gfx->setTextSize(2); 
       gfx->print("Acc: ");
       gfx->print(acc.x, 1);
       gfx->print(", ");
@@ -496,8 +650,6 @@ void loop() {
       gfx->print(gyr.y, 1);
       gfx->print(", ");
       gfx->println(gyr.z, 1);
-      
-      // Return to normal text size
       gfx->setTextSize(2);
     }
     // Display BLE connection status
@@ -516,6 +668,7 @@ void loop() {
       gfx->setTextColor(RED);
       gfx->println("EMERGENCY ALERT!");
     }
+    drawDemoButton(demoMode);
   }
   
   // Send data via BLE every 500ms when connected
