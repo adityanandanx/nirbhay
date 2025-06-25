@@ -52,6 +52,7 @@ dependencies:
   another_telephony: ^0.4.1
   google_maps_flutter: ^2.12.3
   speech_to_text: ^7.0.0
+  firebase_database: ^11.3.7
 
 dev_dependencies:
   flutter_test:
