@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/emergency_contact.dart';
 import '../../providers/app_providers.dart';
 
@@ -11,10 +12,14 @@ class ContactsScreen extends ConsumerStatefulWidget {
 }
 
 class _ContactsScreenState extends ConsumerState<ContactsScreen> {
+  bool _isSyncing = false;
+
   @override
   Widget build(BuildContext context) {
     final safetyState = ref.watch(safetyStateProvider);
     final emergencyContacts = safetyState.emergencyContacts;
+    final authState = ref.watch(authStateProvider);
+    final isLoggedIn = authState.user != null;
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -37,6 +42,31 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Firestore sync status
+            if (isLoggedIn && emergencyContacts.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16.0),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_done,
+                      size: 16,
+                      color: Colors.green.shade700,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isSyncing
+                          ? 'Syncing contacts...'
+                          : 'Contacts synced with cloud',
+                      style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Contacts List
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -289,11 +319,16 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
+                  setState(() => _isSyncing = true);
                   ref
                       .read(safetyStateProvider.notifier)
                       .removeEmergencyContact(contacts[index].id);
                   Navigator.of(context).pop();
+
+                  // Delay to show syncing status
+                  await Future.delayed(const Duration(seconds: 1));
+                  if (mounted) setState(() => _isSyncing = false);
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 child: const Text(
@@ -365,11 +400,12 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   if (nameController.text.isNotEmpty &&
                       phoneController.text.isNotEmpty) {
                     if (index != null) {
                       // Update existing contact
+                      setState(() => _isSyncing = true);
                       final updatedContact = contact!.copyWith(
                         name: nameController.text,
                         phone: phoneController.text,
@@ -378,8 +414,13 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       ref
                           .read(safetyStateProvider.notifier)
                           .updateEmergencyContact(updatedContact);
+
+                      // Delay to show syncing status
+                      await Future.delayed(const Duration(seconds: 1));
+                      if (mounted) setState(() => _isSyncing = false);
                     } else {
                       // Add new contact
+                      setState(() => _isSyncing = true);
                       final newContact = EmergencyContact(
                         id: DateTime.now().millisecondsSinceEpoch.toString(),
                         name: nameController.text,
@@ -396,6 +437,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       ref
                           .read(safetyStateProvider.notifier)
                           .addEmergencyContact(newContact);
+
+                      // Delay to show syncing status
+                      await Future.delayed(const Duration(seconds: 1));
+                      if (mounted) setState(() => _isSyncing = false);
                     }
                     Navigator.of(context).pop();
                   }

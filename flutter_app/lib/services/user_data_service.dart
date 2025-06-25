@@ -76,8 +76,8 @@ class UserDataService {
     }
   }
 
-  // Update emergency contacts
-  Future<void> updateEmergencyContact(
+  // Update primary emergency contact
+  Future<void> updatePrimaryEmergencyContact(
     String uid,
     String name,
     String phone,
@@ -89,7 +89,7 @@ class UserDataService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error updating emergency contact: $e');
+      print('Error updating primary emergency contact: $e');
       rethrow;
     }
   }
@@ -172,6 +172,100 @@ class UserDataService {
       await _users.doc(uid).delete();
     } catch (e) {
       print('Error deleting user data: $e');
+      rethrow;
+    }
+  }
+
+  // Get emergency contacts for a user
+  Future<List<Map<String, dynamic>>> getEmergencyContacts(String uid) async {
+    try {
+      final doc = await _users.doc(uid).get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        return List<Map<String, dynamic>>.from(
+          data['emergencyContacts'] as List<dynamic>? ?? [],
+        );
+      }
+      return [];
+    } catch (e) {
+      print('Error getting emergency contacts: $e');
+      rethrow;
+    }
+  }
+
+  // Save emergency contacts
+  Future<void> saveEmergencyContacts(
+    String uid,
+    List<Map<String, dynamic>> contacts,
+  ) async {
+    try {
+      await _users.doc(uid).update({
+        'emergencyContacts': contacts,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error saving emergency contacts: $e');
+      rethrow;
+    }
+  }
+
+  // Add an emergency contact
+  Future<void> addEmergencyContact(
+    String uid,
+    Map<String, dynamic> contact,
+  ) async {
+    try {
+      // Get current contacts
+      final contacts = await getEmergencyContacts(uid);
+
+      // Add new contact
+      contacts.add(contact);
+
+      // Save updated contacts
+      await saveEmergencyContacts(uid, contacts);
+    } catch (e) {
+      print('Error adding emergency contact: $e');
+      rethrow;
+    }
+  }
+
+  // Update an emergency contact
+  Future<void> updateEmergencyContact(
+    String uid,
+    String contactId,
+    Map<String, dynamic> updatedContact,
+  ) async {
+    try {
+      // Get current contacts
+      final contacts = await getEmergencyContacts(uid);
+
+      // Find and update the contact
+      final index = contacts.indexWhere((c) => c['id'] == contactId);
+      if (index != -1) {
+        contacts[index] = updatedContact;
+
+        // Save updated contacts
+        await saveEmergencyContacts(uid, contacts);
+      }
+    } catch (e) {
+      print('Error updating emergency contact: $e');
+      rethrow;
+    }
+  }
+
+  // Remove an emergency contact
+  Future<void> removeEmergencyContact(String uid, String contactId) async {
+    try {
+      // Get current contacts
+      final contacts = await getEmergencyContacts(uid);
+
+      // Remove the contact
+      contacts.removeWhere((c) => c['id'] == contactId);
+
+      // Save updated contacts
+      await saveEmergencyContacts(uid, contacts);
+    } catch (e) {
+      print('Error removing emergency contact: $e');
       rethrow;
     }
   }

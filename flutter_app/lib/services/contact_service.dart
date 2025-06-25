@@ -3,9 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/emergency_contact.dart';
 import '../models/safety_state.dart';
+import '../services/user_data_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// Service for managing emergency contacts
 class ContactService {
+  final UserDataService _userDataService = UserDataService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  /// Get current user id
+  String? get currentUserId => _auth.currentUser?.uid;
+
   /// Add a new emergency contact
   SafetyState addEmergencyContact(
     SafetyState currentState,
@@ -14,6 +22,10 @@ class ContactService {
     final updatedContacts = [...currentState.emergencyContacts, contact];
     final newState = currentState.copyWith(emergencyContacts: updatedContacts);
     _saveEmergencyContacts(newState.emergencyContacts);
+
+    // Also save to Firestore if user is logged in
+    _syncContactsWithFirestore(updatedContacts);
+
     return newState;
   }
 
@@ -26,6 +38,10 @@ class ContactService {
         currentState.emergencyContacts.where((c) => c.id != contactId).toList();
     final newState = currentState.copyWith(emergencyContacts: updatedContacts);
     _saveEmergencyContacts(newState.emergencyContacts);
+
+    // Also remove from Firestore if user is logged in
+    _syncContactsWithFirestore(updatedContacts);
+
     return newState;
   }
 
@@ -40,11 +56,65 @@ class ContactService {
         }).toList();
     final newState = currentState.copyWith(emergencyContacts: updatedContacts);
     _saveEmergencyContacts(newState.emergencyContacts);
+
+    // Also update in Firestore if user is logged in
+    _syncContactsWithFirestore(updatedContacts);
+
     return newState;
   }
 
-  /// Load emergency contacts from SharedPreferences
+  /// Sync emergency contacts with Firestore
+  Future<void> _syncContactsWithFirestore(
+    List<EmergencyContact> contacts,
+  ) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    try {
+      // Convert contacts to Maps for Firestore
+      final contactMaps = contacts.map((contact) => contact.toJson()).toList();
+
+      // Save to Firestore
+      await _userDataService.saveEmergencyContacts(uid, contactMaps);
+      debugPrint('✅ Emergency contacts synced with Firestore');
+    } catch (e) {
+      debugPrint('❌ Error syncing emergency contacts with Firestore: $e');
+    }
+  }
+
+  /// Load emergency contacts from Firestore if available, otherwise from local storage
   Future<SafetyState> loadEmergencyContacts(SafetyState currentState) async {
+    final uid = currentUserId;
+
+    if (uid != null) {
+      try {
+        // Try loading from Firestore first
+        final contactMaps = await _userDataService.getEmergencyContacts(uid);
+        if (contactMaps.isNotEmpty) {
+          final contacts =
+              contactMaps
+                  .map(
+                    (map) => EmergencyContact.fromJson(
+                      Map<String, dynamic>.from(map),
+                    ),
+                  )
+                  .toList();
+
+          // Also save to local storage as backup
+          await _saveEmergencyContacts(contacts);
+
+          debugPrint(
+            '✅ Loaded ${contacts.length} emergency contacts from Firestore',
+          );
+          return currentState.copyWith(emergencyContacts: contacts);
+        }
+      } catch (e) {
+        debugPrint('❌ Error loading contacts from Firestore: $e');
+        // Fall back to local storage if Firestore fails
+      }
+    }
+
+    // If Firestore loading failed or user not logged in, try loading from local storage
     try {
       final prefs = await SharedPreferences.getInstance();
       final contactsJson = prefs.getStringList('emergency_contacts') ?? [];
@@ -55,9 +125,14 @@ class ContactService {
             return EmergencyContact.fromJson(json);
           }).toList();
 
+      // If we have contacts locally but not in Firestore, sync them up
+      if (contacts.isNotEmpty && uid != null) {
+        _syncContactsWithFirestore(contacts);
+      }
+
       return currentState.copyWith(emergencyContacts: contacts);
     } catch (e) {
-      debugPrint('Error loading emergency contacts: $e');
+      debugPrint('❌ Error loading emergency contacts from local storage: $e');
       return currentState;
     }
   }

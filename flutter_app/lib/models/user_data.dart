@@ -16,6 +16,7 @@ class UserData {
   final bool emailVerified;
   final Map<String, dynamic>? preferences;
   final Map<String, dynamic>? safetyStats;
+  final List<Map<String, dynamic>>? emergencyContacts;
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
 
@@ -31,6 +32,7 @@ class UserData {
     this.emailVerified = false,
     this.preferences,
     this.safetyStats,
+    this.emergencyContacts,
     this.createdAt,
     this.updatedAt,
   });
@@ -38,6 +40,14 @@ class UserData {
   // Factory constructor to create UserData from Firestore document
   factory UserData.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
+
+    // Parse emergency contacts if they exist in the document
+    List<Map<String, dynamic>>? emergencyContacts;
+    if (data['emergencyContacts'] != null) {
+      emergencyContacts = List<Map<String, dynamic>>.from(
+        data['emergencyContacts'] as List<dynamic>? ?? [],
+      );
+    }
 
     return UserData(
       uid: doc.id,
@@ -51,6 +61,7 @@ class UserData {
       emailVerified: data['emailVerified'] ?? false,
       preferences: data['preferences'] as Map<String, dynamic>?,
       safetyStats: data['safetyStats'] as Map<String, dynamic>?,
+      emergencyContacts: emergencyContacts,
       createdAt: data['createdAt'] as Timestamp?,
       updatedAt: data['updatedAt'] as Timestamp?,
     );
@@ -81,6 +92,7 @@ class UserData {
       'emailVerified': emailVerified,
       'preferences': preferences,
       'safetyStats': safetyStats,
+      'emergencyContacts': emergencyContacts,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -96,6 +108,7 @@ class UserData {
     bool? emailVerified,
     Map<String, dynamic>? preferences,
     Map<String, dynamic>? safetyStats,
+    List<Map<String, dynamic>>? emergencyContacts,
   }) {
     return UserData(
       uid: this.uid,
@@ -110,6 +123,7 @@ class UserData {
       emailVerified: emailVerified ?? this.emailVerified,
       preferences: preferences ?? this.preferences,
       safetyStats: safetyStats ?? this.safetyStats,
+      emergencyContacts: emergencyContacts ?? this.emergencyContacts,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     );
