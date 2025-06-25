@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_providers.dart';
+import '../../providers/user_provider.dart';
 import '../../widgets/location_map_section.dart';
 import '../../widgets/quick_actions_section.dart';
 import '../../widgets/safety_status_card.dart';
@@ -44,19 +45,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header with greeting
+              // User greeting with actual name
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Hello, Sarah',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade800,
-                        ),
+                      // Get user data from provider
+                      Consumer(
+                        builder: (context, ref, child) {
+                          // Get the current user data
+                          final userData = ref.watch(userDataProvider);
+
+                          return userData.when(
+                            loading:
+                                () => Text(
+                                  'Hello there',
+                                  style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey.shade800,
+                                  ),
+                                ),
+                            error:
+                                (_, __) => Text(
+                                  'Hello there',
+                                  style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey.shade800,
+                                  ),
+                                ),
+                            data: (userModel) {
+                              // Get first name from full name
+                              final fullName =
+                                  userModel?.displayName ?? 'there';
+                              final firstName = fullName.split(' ').first;
+
+                              return Text(
+                                'Hello, $firstName',
+                                style: TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade800,
+                                ),
+                              );
+                            },
+                          );
+                        },
                       ),
                       const SizedBox(height: 4),
                       Text(

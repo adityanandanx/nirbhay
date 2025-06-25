@@ -2,10 +2,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:nirbhay_flutter/providers/auth_provider.dart';
-import 'package:nirbhay_flutter/screens/auth/login_screen.dart';
 import 'package:nirbhay_flutter/screens/dashboard/dashboard_screen.dart';
+import 'package:nirbhay_flutter/screens/onboarding_screen.dart';
 
 import 'firebase_options.dart';
 
@@ -41,7 +40,7 @@ class MyApp extends ConsumerWidget {
       home:
           authState.isAuthenticated
               ? const DashboardScreen()
-              : const LoginScreen(),
+              : const OnboardingScreen(),
     );
   }
 }

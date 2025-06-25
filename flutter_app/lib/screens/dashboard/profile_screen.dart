@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/user_provider.dart';
+import '../../models/user_model.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -10,19 +13,99 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  // User data will come from Firebase Auth
-
   @override
   Widget build(BuildContext context) {
     // Get the current auth state
     final authState = ref.watch(authStateProvider);
     final user = authState.user;
 
-    // User information
-    final String displayName = user?.displayName ?? 'No Name Set';
-    final String email = user?.email ?? 'No Email';
+    // Get the user data from Firestore
+    final userData = ref.watch(userDataProvider);
+
+    return userData.when(
+      loading: () => _buildLoadingScreen(),
+      error: (error, stackTrace) => _buildErrorScreen(error.toString()),
+      data: (userModel) => _buildProfileScreen(user, userModel),
+    );
+  }
+
+  // Loading screen while fetching user data
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      appBar: AppBar(
+        title: const Text(
+          'Profile',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: const Center(
+        child: CircularProgressIndicator(color: Colors.purple),
+      ),
+    );
+  }
+
+  // Error screen in case of data fetch error
+  Widget _buildErrorScreen(String errorMessage) {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      appBar: AppBar(
+        title: const Text(
+          'Profile',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 60),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading profile',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: Text(
+                errorMessage,
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                // Refresh the user data provider
+                final _ = ref.refresh(userDataProvider);
+              },
+              child: const Text('Try Again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Main profile screen with user data
+  Widget _buildProfileScreen(User? user, UserModel? userModel) {
+    // User information from Firestore and Auth
+    final String displayName =
+        userModel?.displayName ?? user?.displayName ?? 'No Name Set';
+    final String email = userModel?.email ?? user?.email ?? 'No Email';
+    final String phoneNumber =
+        userModel?.phoneNumber ?? user?.phoneNumber ?? 'No Phone Number';
     final String joinDate =
-        user?.metadata.creationTime != null
+        userModel?.createdAt != null
+            ? _formatDate(userModel!.createdAt!)
+            : user?.metadata.creationTime != null
             ? _formatDate(user!.metadata.creationTime!)
             : 'Unknown';
 
@@ -37,7 +120,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            onPressed: _editProfile,
+            onPressed: () => _editProfile(userModel, user),
             icon: const Icon(Icons.edit, color: Colors.purple),
           ),
         ],
@@ -115,7 +198,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             _buildProfileOption(
               'Personal Information',
               Icons.person_outline,
-              () => _showPersonalInfo(),
+              () => _showPersonalInfo(user, userModel),
             ),
             const SizedBox(height: 12),
 
@@ -322,31 +405,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  void _editProfile() {
+  void _editProfile(UserModel? userModel, User? user) {
+    final nameController = TextEditingController(
+      text: userModel?.displayName ?? user?.displayName ?? '',
+    );
+    final emailController = TextEditingController(
+      text: userModel?.email ?? user?.email ?? '',
+    );
+    final phoneController = TextEditingController(
+      text: userModel?.phoneNumber ?? user?.phoneNumber ?? '',
+    );
+
     showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
             title: const Text('Edit Profile'),
-            content: const Column(
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
-                  decoration: InputDecoration(
+                  controller: nameController,
+                  decoration: const InputDecoration(
                     labelText: 'Full Name',
                     border: OutlineInputBorder(),
                   ),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 TextField(
-                  decoration: InputDecoration(
+                  controller: emailController,
+                  enabled: false, // Email can't be changed directly
+                  decoration: const InputDecoration(
                     labelText: 'Email',
                     border: OutlineInputBorder(),
                   ),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 TextField(
-                  decoration: InputDecoration(
+                  controller: phoneController,
+                  decoration: const InputDecoration(
                     labelText: 'Phone',
                     border: OutlineInputBorder(),
                   ),
@@ -359,13 +456,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Profile updated successfully'),
-                    ),
-                  );
+                  // Save updated user data
+                  try {
+                    if (user != null) {
+                      String uid = user.uid;
+                      // Update user data in Firestore
+                      final updateUserData = ref.read(
+                        updateUserDataProvider(uid),
+                      );
+                      await updateUserData({
+                        'displayName': nameController.text.trim(),
+                        'phoneNumber': phoneController.text.trim(),
+                      });
+
+                      // Update display name in Firebase Auth
+                      await user.updateDisplayName(nameController.text.trim());
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Profile updated successfully'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Error updating profile: ${e.toString()}',
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
                 child: const Text(
@@ -378,20 +507,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  void _showPersonalInfo() {
-    final authState = ref.read(authStateProvider);
-    final user = authState.user;
-
-    final String displayName = user?.displayName ?? 'No Name Set';
-    final String email = user?.email ?? 'No Email';
-    final String phone = user?.phoneNumber ?? 'No Phone Number';
+  void _showPersonalInfo(User? user, UserModel? userModel) {
+    final String displayName =
+        userModel?.displayName ?? user?.displayName ?? 'No Name Set';
+    final String email = userModel?.email ?? user?.email ?? 'No Email';
+    final String phone =
+        userModel?.phoneNumber ?? user?.phoneNumber ?? 'No Phone Number';
+    final String uid = user?.uid ?? 'Unknown';
+    final bool emailVerified = user?.emailVerified ?? false;
 
     _showInfoDialog('Personal Information', [
       'Name: $displayName',
       'Email: $email',
       'Phone: $phone',
-      'User ID: ${user?.uid ?? 'Unknown'}',
-      'Email Verified: ${user?.emailVerified ?? false ? 'Yes' : 'No'}',
+      'User ID: $uid',
+      'Email Verified: ${emailVerified ? 'Yes' : 'No'}',
     ]);
   }
 
@@ -512,9 +642,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           content: Text('Signed out successfully'),
                         ),
                       );
-
-                      // The main.dart file is already set up to redirect to the login screen
-                      // when auth state changes, so we don't need to navigate manually
                     }
                   } catch (e) {
                     if (mounted) {
@@ -539,8 +666,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // Format date to readable format
   String _formatDate(DateTime dateTime) {
-    // This would require the intl package
-    // Use simple string formatting for now
     return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
   }
 }

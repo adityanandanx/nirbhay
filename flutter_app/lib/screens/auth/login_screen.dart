@@ -367,15 +367,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       try {
         // Get the auth notifier from the provider
-        await ref
-            .read(authStateProvider.notifier)
-            .signInWithEmailAndPassword(
-              _emailController.text.trim(),
-              _passwordController.text,
-            );
+        final authNotifier = ref.read(authStateProvider.notifier);
+
+        // First attempt normal sign in
+        await authNotifier.signInWithEmailAndPassword(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
 
         // Get updated auth state after sign-in attempt
         final authState = ref.read(authStateProvider);
+
+        // If there's an error and it's related to user not found, try recovery
+        if (authState.error != null &&
+            authState.error!.contains('No account exists')) {
+          // Show status message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Checking for account in our database...'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+
+          // Try recovery method
+          final recovered = await authNotifier.checkAndFixAccountConsistency(
+            _emailController.text.trim(),
+            _passwordController.text,
+          );
+
+          if (recovered) {
+            // Sign in worked in recovery mode
+            setState(() {
+              _isLoading = false;
+            });
+
+            // Navigate to dashboard
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const DashboardScreen()),
+            );
+            return;
+          }
+        }
 
         setState(() {
           _isLoading = false;

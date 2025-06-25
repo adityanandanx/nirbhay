@@ -369,12 +369,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       });
 
       try {
-        // Use the auth provider to create a user
+        // Use the auth provider to create a user and save data to Firestore
         await ref
             .read(authStateProvider.notifier)
             .createUserWithEmailAndPassword(
               _emailController.text.trim(),
               _passwordController.text,
+              displayName: _fullNameController.text.trim(),
+              phoneNumber: _phoneController.text.trim(),
             );
 
         // Get the updated auth state
