@@ -84,7 +84,7 @@ class _FullscreenMapViewState extends ConsumerState<FullscreenMapView> {
       });
 
       // Animate the camera to follow the user's location
-      _animateToCurrentLocation();
+      // _animateToCurrentLocation();
     }
   }
 
