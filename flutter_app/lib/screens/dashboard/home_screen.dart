@@ -10,6 +10,7 @@ import '../../widgets/sos_button.dart';
 import '../../widgets/triangle_of_safety_section.dart';
 import '../../widgets/wearable_status_card.dart';
 import '../ble_connection_screen.dart';
+import '../../services/fight_flight_predictor.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -151,6 +152,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // Triangle of Safety Section
               const TriangleOfSafetySection(),
+              SizedBox(height: 90),
+              // Test Button for FightFlightPredictor
+              Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    // Example: 8 sensor readings, each with 7 values [hr, ax, ay, az, gx, gy, gz]
+                    List<List<double>> batch = [
+                      [80, 0.1, 0.2, 0.3, 10, 11, 12],
+                      [82, 0.2, 0.1, 0.3, 12, 10, 13],
+                      [78, 0.1, 0.3, 0.2, 11, 12, 10],
+                      [85, 0.2, 0.2, 0.2, 13, 14, 15],
+                      [90, 0.3, 0.1, 0.2, 15, 13, 12],
+                      [88, 0.2, 0.2, 0.1, 14, 15, 13],
+                      [86, 0.1, 0.2, 0.3, 12, 11, 14],
+                      [84, 0.2, 0.3, 0.1, 13, 12, 15],
+                    ];
+                    final predictor = FightFlightPredictor();
+                    String result = await predictor.predict(batch);
+                    // ignore: use_build_context_synchronously
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text('Fight/Flight Prediction'),
+                        content: Text(result),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  child: Text('Test Fight/Flight Predictor'),
+                ),
+              ),
             ],
           ),
         ),
