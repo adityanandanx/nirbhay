@@ -1,4 +1,9 @@
-# Nirbhay - Empowering Safety When It Matters Most
+# Nirbhay - Always Aware, Always There
+
+## Pitch Deck
+
+![Nirbhay - Always Aware, Always There.](nirbhay_deck.png)
+**[Link to pitch deck](https://www.figma.com/slides/OQExg7NDuFGN1PTDLglY4k/Nirbhay?node-id=1-631&t=RvqCxhaWDUiU3ki5-1)**
 
 ## The Problem We're Solving
 

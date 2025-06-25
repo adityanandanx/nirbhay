@@ -1,21 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/auth_provider.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  // Mock user data
-  final String _userName = 'Sarah Johnson';
-  final String _userEmail = 'sarah.johnson@email.com';
-  final String _userPhone = '+1 234 567 8900';
-  final String _joinDate = 'January 2024';
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  // User data will come from Firebase Auth
 
   @override
   Widget build(BuildContext context) {
+    // Get the current auth state
+    final authState = ref.watch(authStateProvider);
+    final user = authState.user;
+
+    // User information
+    final String displayName = user?.displayName ?? 'No Name Set';
+    final String email = user?.email ?? 'No Email';
+    final String joinDate =
+        user?.metadata.creationTime != null
+            ? _formatDate(user!.metadata.creationTime!)
+            : 'Unknown';
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -75,7 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // User Name
                   Text(
-                    _userName,
+                    displayName,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 24,
@@ -86,14 +96,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // User Email
                   Text(
-                    _userEmail,
+                    email,
                     style: const TextStyle(color: Colors.white70, fontSize: 16),
                   ),
                   const SizedBox(height: 4),
 
                   // Join Date
                   Text(
-                    'Member since $_joinDate',
+                    'Member since $joinDate',
                     style: const TextStyle(color: Colors.white60, fontSize: 14),
                   ),
                 ],
@@ -369,12 +379,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showPersonalInfo() {
+    final authState = ref.read(authStateProvider);
+    final user = authState.user;
+
+    final String displayName = user?.displayName ?? 'No Name Set';
+    final String email = user?.email ?? 'No Email';
+    final String phone = user?.phoneNumber ?? 'No Phone Number';
+
     _showInfoDialog('Personal Information', [
-      'Name: $_userName',
-      'Email: $_userEmail',
-      'Phone: $_userPhone',
-      'Age: 24',
-      'Location: New York, NY',
+      'Name: $displayName',
+      'Email: $email',
+      'Phone: $phone',
+      'User ID: ${user?.uid ?? 'Unknown'}',
+      'Email Verified: ${user?.emailVerified ?? false ? 'Yes' : 'No'}',
     ]);
   }
 
@@ -482,12 +499,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   Navigator.of(context).pop();
-                  // TODO: Implement actual logout logic
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Signed out successfully')),
-                  );
+
+                  try {
+                    // Call the sign out method from the auth provider
+                    await ref.read(authStateProvider.notifier).signOut();
+
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Signed out successfully'),
+                        ),
+                      );
+
+                      // The main.dart file is already set up to redirect to the login screen
+                      // when auth state changes, so we don't need to navigate manually
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error signing out: ${e.toString()}'),
+                        ),
+                      );
+                    }
+                  }
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 child: const Text(
@@ -498,5 +535,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
     );
+  }
+
+  // Format date to readable format
+  String _formatDate(DateTime dateTime) {
+    // This would require the intl package
+    // Use simple string formatting for now
+    return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
   }
 }

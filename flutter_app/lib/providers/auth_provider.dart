@@ -91,3 +91,8 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(error: null);
   }
 }
+
+// Auth Provider
+final authStateProvider = StateNotifierProvider<AuthStateNotifier, AuthState>(
+  (ref) => AuthStateNotifier(),
+);
