@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/continuous_audio_classifier.dart';
+import '../services/distress_audio_detection_service.dart';
 
 class AudioClassifierTest extends StatefulWidget {
   const AudioClassifierTest({super.key});
@@ -9,37 +9,62 @@ class AudioClassifierTest extends StatefulWidget {
 }
 
 class _AudioClassifierTestState extends State<AudioClassifierTest> {
-  late final ContinuousAudioClassifier _classifier;
+  late final DistressAudioDetectionService _detector;
   bool _isInitialized = false;
-  bool _isClassifying = false;
+  bool _isListening = false;
   String _lastDetectedSound = 'None';
   double _lastConfidence = 0.0;
+  String _lastRecognizedSpeech = '';
 
   @override
   void initState() {
     super.initState();
-    _classifier = ContinuousAudioClassifier(
-      onSoundDetected: (label, confidence) {
-        setState(() {
-          _lastDetectedSound = label;
-          _lastConfidence = confidence;
-        });
-      },
-    );
+    _detector = DistressAudioDetectionService();
+    _initialize();
   }
 
   Future<void> _initialize() async {
     try {
-      await _classifier.initialize();
+      await _detector.initialize(
+        onDistressDetected: () {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('⚠️ Distress sound detected!'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        },
+        onSpeechRecognized: (speech) {
+          if (mounted) {
+            setState(() {
+              _lastRecognizedSpeech = speech;
+            });
+          }
+        },
+        onError: (error) {
+          debugPrint('Error in detector: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error: $error'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        },
+      );
       setState(() {
         _isInitialized = true;
       });
     } catch (e) {
-      debugPrint('Failed to initialize classifier: $e');
+      debugPrint('Failed to initialize detector: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to initialize audio classifier: $e'),
+            content: Text('Failed to initialize audio detector: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -47,23 +72,23 @@ class _AudioClassifierTestState extends State<AudioClassifierTest> {
     }
   }
 
-  Future<void> _toggleClassification() async {
+  Future<void> _toggleDetection() async {
     if (!_isInitialized) {
       await _initialize();
     }
 
     try {
-      if (_isClassifying) {
-        await _classifier.stopClassification();
+      if (_isListening) {
+        await _detector.stopListening();
       } else {
-        await _classifier.startClassification();
+        await _detector.startListening();
       }
 
       setState(() {
-        _isClassifying = !_isClassifying;
+        _isListening = _detector.isListening;
       });
     } catch (e) {
-      debugPrint('Error toggling classification: $e');
+      debugPrint('Error toggling detection: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -74,7 +99,7 @@ class _AudioClassifierTestState extends State<AudioClassifierTest> {
 
   @override
   void dispose() {
-    _classifier.dispose();
+    _detector.dispose();
     super.dispose();
   }
 
@@ -90,7 +115,7 @@ class _AudioClassifierTestState extends State<AudioClassifierTest> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Audio Classification Test',
+              'Distress Audio Detection Test',
               style: Theme.of(context).textTheme.titleLarge,
               textAlign: TextAlign.center,
             ),
@@ -100,9 +125,9 @@ class _AudioClassifierTestState extends State<AudioClassifierTest> {
               children: [
                 Text('Status:', style: Theme.of(context).textTheme.titleMedium),
                 Text(
-                  _isClassifying ? 'Listening' : 'Stopped',
+                  _isListening ? 'Listening' : 'Stopped',
                   style: TextStyle(
-                    color: _isClassifying ? Colors.green : Colors.red,
+                    color: _isListening ? Colors.green : Colors.red,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -113,12 +138,14 @@ class _AudioClassifierTestState extends State<AudioClassifierTest> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Last Detected:',
+                  'Last Speech:',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 Flexible(
                   child: Text(
-                    _lastDetectedSound,
+                    _lastRecognizedSpeech.isEmpty
+                        ? 'None'
+                        : _lastRecognizedSpeech,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
@@ -126,27 +153,13 @@ class _AudioClassifierTestState extends State<AudioClassifierTest> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Confidence:',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(
-                  '${(_lastConfidence * 100).toStringAsFixed(1)}%',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: _toggleClassification,
-              icon: Icon(_isClassifying ? Icons.stop : Icons.mic),
-              label: Text(_isClassifying ? 'Stop' : 'Start'),
+              onPressed: _toggleDetection,
+              icon: Icon(_isListening ? Icons.stop : Icons.mic),
+              label: Text(_isListening ? 'Stop' : 'Start'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isClassifying ? Colors.red : Colors.green,
+                backgroundColor: _isListening ? Colors.red : Colors.green,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),

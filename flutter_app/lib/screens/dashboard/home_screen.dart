@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nirbhay_flutter/widgets/speech_to_text_test.dart';
 import 'dart:async';
 
 import '../../providers/app_providers.dart';
@@ -268,6 +269,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // Audio Classifier Test Widget
               const AudioClassifierTest(),
+              const SizedBox(height: 30),
+
+              // Audio Classifier Test Widget
+              const SpeechToTextTest(),
               const SizedBox(height: 30),
 
               // Test Button for FightFlightPredictor
