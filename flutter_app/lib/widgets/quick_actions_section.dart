@@ -81,7 +81,9 @@ class QuickActionsSection extends ConsumerWidget {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                ref.read(safetyStateProvider.notifier).triggerEmergencyAlert();
+                ref
+                    .read(safetyStateProvider.notifier)
+                    .startEmergencyCountdown();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Emergency alert sent!')),
                 );

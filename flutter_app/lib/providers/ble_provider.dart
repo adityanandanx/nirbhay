@@ -170,6 +170,17 @@ class BLEStateNotifier extends StateNotifier<BLEState> {
     }
   }
 
+  Future<void> sendEmergencyTimer(int countdownSeconds) async {
+    try {
+      await _bleService.sendEmergencyTimer(countdownSeconds);
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to send emergency timer: ${e.toString()}',
+      );
+      rethrow;
+    }
+  }
+
   Future<void> setSafetyMode(bool enabled) async {
     // Only attempt to set safety mode on device if connected
     if (!state.isConnected) {

@@ -26,7 +26,7 @@ class SettingsState {
     this.biometricEnabled = false,
     this.dataBackupEnabled = true,
     this.alertSensitivity = 'Medium',
-    this.sosCountdownTime = 30,
+    this.sosCountdownTime = 10,
     this.isLoading = false,
     this.error,
   });

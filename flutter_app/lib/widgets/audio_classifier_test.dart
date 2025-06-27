@@ -12,8 +12,6 @@ class _AudioClassifierTestState extends State<AudioClassifierTest> {
   late final DistressAudioDetectionService _detector;
   bool _isInitialized = false;
   bool _isListening = false;
-  String _lastDetectedSound = 'None';
-  double _lastConfidence = 0.0;
   String _lastRecognizedSpeech = '';
 
   @override

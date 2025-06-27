@@ -12,6 +12,8 @@ class SafetyState {
   final bool isLoading;
   final String? error;
   final bool isVoiceDetectionActive;
+  final bool isEmergencyCountdownActive;
+  final DateTime? emergencyCountdownStartTime;
 
   const SafetyState({
     this.isSafetyModeActive = false,
@@ -23,6 +25,8 @@ class SafetyState {
     this.isLoading = false,
     this.error,
     this.isVoiceDetectionActive = false,
+    this.isEmergencyCountdownActive = false,
+    this.emergencyCountdownStartTime,
   });
 
   SafetyState copyWith({
@@ -35,6 +39,8 @@ class SafetyState {
     bool? isLoading,
     String? error,
     bool? isVoiceDetectionActive,
+    bool? isEmergencyCountdownActive,
+    DateTime? emergencyCountdownStartTime,
   }) {
     return SafetyState(
       isSafetyModeActive: isSafetyModeActive ?? this.isSafetyModeActive,
@@ -47,6 +53,10 @@ class SafetyState {
       error: error ?? this.error,
       isVoiceDetectionActive:
           isVoiceDetectionActive ?? this.isVoiceDetectionActive,
+      isEmergencyCountdownActive:
+          isEmergencyCountdownActive ?? this.isEmergencyCountdownActive,
+      emergencyCountdownStartTime:
+          emergencyCountdownStartTime ?? this.emergencyCountdownStartTime,
     );
   }
 

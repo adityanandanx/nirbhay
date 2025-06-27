@@ -32,6 +32,8 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
 
   StreamSubscription<BLEState>? _bleStateSubscription;
 
+  Timer? _emergencyCountdownTimer;
+
   void _init() async {
     // Initialize services
     _contactService = ContactService();
@@ -59,24 +61,24 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     // Listen to BLE state changes for sensor data and connection status
     _bleStateSubscription = _bleStateNotifier.stream.listen((bleState) {
       // If safety mode is active but device disconnected, show warning but keep safety mode active
-      // if (state.isSafetyModeActive && !bleState.isConnected) {
-      //   state = state.copyWith(
-      //     error:
-      //         'Warning: Wearable device disconnected. Safety mode continues with phone-only features.',
-      //   );
-      // }
+      if (state.isSafetyModeActive && !bleState.isConnected) {
+        state = state.copyWith(
+          error:
+              'Warning: Wearable device disconnected. Safety mode continues with phone-only features.',
+        );
+      }
 
-      // Check sensor data for automatic threat detection and emergency alerts
-      if (bleState.sensorData != null && bleState.isConnected) {
-        // Check for emergency flag from BLE device
-        if (bleState.sensorData!['emergency_detected'] == true) {
-          // Trigger emergency alert immediately
-          triggerEmergencyAlert();
-        }
-        // Continue with normal threat detection if in safety mode
-        else if (state.isSafetyModeActive) {
-          _checkForThreat(bleState.sensorData!);
-        }
+      // Check for emergency cancel signal
+      if (bleState.sensorData != null &&
+          bleState.sensorData!['emergency_cancelled'] == true) {
+        cancelEmergencyCountdown();
+      }
+
+      // Check sensor data for automatic threat detection (only if device is connected)
+      if (bleState.sensorData != null &&
+          state.isSafetyModeActive &&
+          bleState.isConnected) {
+        _checkForThreat(bleState.sensorData!);
       }
     });
   }
@@ -141,10 +143,12 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
 
   // Lock to prevent multiple simultaneous emergency triggers
   bool _isTriggering = false;
+  // Lock to prevent multiple simultaneous countdowns
+  bool _isCountdownActive = false;
   // Timestamp of the last emergency trigger
   DateTime? _lastEmergencyTriggerTime;
   // Cooldown period between emergency triggers
-  static const Duration _emergencyCooldown = Duration(minutes: 1);
+  static const Duration _emergencyCooldown = Duration(seconds: 20);
 
   Future<void> triggerEmergencyAlert() async {
     final now = DateTime.now();
@@ -221,7 +225,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         state = updatedState;
 
         // Start countdown before triggering emergency alert
-        await _startEmergencyCountdown();
+        await startEmergencyCountdown();
       }
     } catch (e) {
       debugPrint('Error detecting threat: $e');
@@ -303,20 +307,6 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     super.dispose();
   }
 
-  Future<void> _startEmergencyCountdown() async {
-    final settings = _settingsNotifier.state;
-
-    // TODO: Implement actual countdown with user interaction
-    // This would show a countdown dialog/screen where user can cancel
-    await Future.delayed(Duration(seconds: settings.sosCountdownTime));
-
-    // If not cancelled by user, trigger emergency alert
-    if (state.error != null &&
-        state.error!.contains('Potential threat detected')) {
-      await triggerEmergencyAlert();
-    }
-  }
-
   /// Initialize distress detection service
   Future<void> _initDistressDetection() async {
     try {
@@ -327,7 +317,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
           if (state.isSafetyModeActive && !state.isEmergencyActive) {
             try {
               debugPrint('🚨 Emergency detected through distress sound!');
-              await triggerEmergencyAlert();
+              await startEmergencyCountdown();
             } catch (e) {
               debugPrint('❌ Failed to handle distress-triggered emergency: $e');
             }
@@ -345,5 +335,75 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         error: 'Failed to initialize distress detection: ${e.toString()}',
       );
     }
+  }
+
+  /// Start emergency countdown and wait for cancel signal
+  Future<void> startEmergencyCountdown() async {
+    debugPrint('🕒 Starting emergency countdown (active: $_isCountdownActive)');
+    if (_isCountdownActive) {
+      debugPrint('⚠️ Emergency countdown already in progress');
+      return;
+    }
+
+    if (state.isEmergencyActive) {
+      debugPrint('⚠️ Emergency already active, ignoring countdown');
+      return;
+    }
+
+    try {
+      _isCountdownActive = true;
+      debugPrint('✅ Emergency countdown activated');
+
+      // Get countdown duration from settings
+      final countdownDuration = _settingsNotifier.state.sosCountdownTime;
+
+      // Send timer signal to device
+      if (_bleStateNotifier.mounted && _bleStateNotifier.state.isConnected) {
+        try {
+          await _bleStateNotifier.sendEmergencyTimer(countdownDuration);
+        } catch (e) {
+          debugPrint('Failed to send emergency timer to device: $e');
+          // Continue with countdown even if device notification fails
+        }
+      }
+
+      // Start local countdown
+      _emergencyCountdownTimer?.cancel();
+      _emergencyCountdownTimer = Timer(
+        Duration(seconds: countdownDuration),
+        () async {
+          _isCountdownActive = false; // Reset countdown flag
+          // Timer completed without receiving cancel signal
+          await triggerEmergencyAlert();
+        },
+      );
+
+      // Update state to show countdown is active
+      state = state.copyWith(
+        isEmergencyCountdownActive: true,
+        emergencyCountdownStartTime: DateTime.now(),
+      );
+    } catch (e) {
+      debugPrint('Failed to start emergency countdown: $e');
+      _isCountdownActive = false; // Reset countdown flag on error
+      state = state.copyWith(
+        error: 'Failed to start emergency countdown: ${e.toString()}',
+        isEmergencyCountdownActive: false,
+        emergencyCountdownStartTime: null,
+      );
+    }
+  }
+
+  /// Cancel the emergency countdown
+  void cancelEmergencyCountdown() {
+    debugPrint('🛑 Cancelling emergency countdown');
+    _emergencyCountdownTimer?.cancel();
+    _emergencyCountdownTimer = null;
+    _isCountdownActive = false;
+    state = state.copyWith(
+      isEmergencyCountdownActive: false,
+      emergencyCountdownStartTime: null,
+    );
+    debugPrint('✅ Emergency countdown cancelled');
   }
 }

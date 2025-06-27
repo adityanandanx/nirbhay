@@ -397,26 +397,26 @@ class _BLEConnectionScreenState extends ConsumerState<BLEConnectionScreen> {
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed:
-                    () =>
-                        ref
-                            .read(bleStateProvider.notifier)
-                            .sendEmergencyAlert(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.emergency),
-                label: const Text('Test Alert'),
-              ),
-            ),
-            const SizedBox(width: 12),
+            // Expanded(
+            //   child: ElevatedButton.icon(
+            //     onPressed:
+            //         () =>
+            //             ref
+            //                 .read(bleStateProvider.notifier)
+            //                 .sendEmergencyAlert(),
+            //     style: ElevatedButton.styleFrom(
+            //       backgroundColor: Colors.red,
+            //       foregroundColor: Colors.white,
+            //       padding: const EdgeInsets.symmetric(vertical: 12),
+            //       shape: RoundedRectangleBorder(
+            //         borderRadius: BorderRadius.circular(12),
+            //       ),
+            //     ),
+            //     icon: const Icon(Icons.emergency),
+            //     label: const Text('Test Alert'),
+            //   ),
+            // ),
+            // const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
                 onPressed:

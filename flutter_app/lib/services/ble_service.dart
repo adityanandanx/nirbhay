@@ -192,28 +192,6 @@ class BLEService {
     }
   }
 
-  /// Handle incoming data from ESP32-S3
-  void _handleIncomingData(List<int> value) {
-    try {
-      String data = utf8.decode(value);
-      debugPrint("Received data: $data");
-
-      // Parse JSON data from ESP32
-      Map<String, dynamic> parsedData = json.decode(data);
-      
-      // Specifically check for emergency_response
-      if (parsedData.containsKey('emergency_response') && 
-          parsedData['emergency_response'] == 'sos') {
-        // Add an emergency flag to the data
-        parsedData['emergency_detected'] = true;
-      }
-      
-      _dataController.add(parsedData);
-    } catch (e) {
-      debugPrint("Error parsing received data: $e");
-    }
-  }
-
   /// Send data to ESP32-S3
   Future<bool> sendData(Map<String, dynamic> data) async {
     if (_characteristic == null || !_characteristic!.properties.write) {
@@ -256,6 +234,35 @@ class BLEService {
       'type': 'status_request',
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  /// Send emergency timer signal to device
+  Future<bool> sendEmergencyTimer(int countdownSeconds) async {
+    return await sendData({
+      'type': 'emergency_timer',
+      'countdown': countdownSeconds,
+    });
+  }
+
+  /// Handle incoming data from ESP32-S3
+  void _handleIncomingData(List<int> value) {
+    try {
+      String data = utf8.decode(value);
+      debugPrint("Received data: $data");
+
+      // Parse JSON data from ESP32
+      Map<String, dynamic> parsedData = json.decode(data);
+
+      // Check for emergency cancel response
+      if (parsedData.containsKey('emergency_response') &&
+          parsedData['emergency_response'] == 'cancel') {
+        parsedData['emergency_cancelled'] = true;
+      }
+
+      _dataController.add(parsedData);
+    } catch (e) {
+      debugPrint("Error parsing received data: $e");
+    }
   }
 
   /// Disconnect from device
