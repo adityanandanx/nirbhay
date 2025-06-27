@@ -9,6 +9,7 @@ import '../services/contact_service.dart';
 import '../services/emergency_service.dart';
 import '../services/location_service.dart';
 import '../services/distress_audio_detection_service.dart';
+import '../services/fight_flight_predictor.dart';
 import 'ble_provider.dart';
 import 'settings_provider.dart';
 
@@ -34,12 +35,21 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
 
   Timer? _emergencyCountdownTimer;
 
+  // Fight/Flight prediction variables
+  Timer? _predictionTimer;
+  final List<List<double>> _sensorDataBuffer = [];
+  late final FightFlightPredictor _predictor;
+  bool _isPredictorInitialized = false;
+
   void _init() async {
     // Initialize services
     _contactService = ContactService();
     _locationService = LocationService();
     _emergencyService = EmergencyService(_settingsNotifier.state);
     _distressDetectionService = DistressAudioDetectionService();
+
+    // Initialize fight/flight predictor
+    await _initPredictor();
 
     // Initialize distress detection service and set up emergency detection callback
     await _initDistressDetection();
@@ -74,10 +84,11 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         cancelEmergencyCountdown();
       }
 
-      // Check sensor data for automatic threat detection (only if device is connected)
+      // Process sensor data for predictions and threat detection
       if (bleState.sensorData != null &&
           state.isSafetyModeActive &&
           bleState.isConnected) {
+        _processSensorData(bleState.sensorData!);
         _checkForThreat(bleState.sensorData!);
       }
     });
@@ -303,6 +314,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   @override
   void dispose() async {
     _bleStateSubscription?.cancel();
+    _predictionTimer?.cancel();
     await _distressDetectionService.dispose();
     super.dispose();
   }
@@ -334,6 +346,95 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
       state = state.copyWith(
         error: 'Failed to initialize distress detection: ${e.toString()}',
       );
+    }
+  }
+
+  /// Initialize fight/flight predictor
+  Future<void> _initPredictor() async {
+    if (_isPredictorInitialized) return;
+
+    try {
+      _predictor = FightFlightPredictor();
+      await _predictor.load();
+      _isPredictorInitialized = true;
+      _setupPredictionTimer();
+      debugPrint('✅ Fight/Flight predictor initialized');
+    } catch (e) {
+      debugPrint('❌ Failed to initialize fight/flight predictor: $e');
+    }
+  }
+
+  /// Process sensor data for prediction
+  void _processSensorData(Map<String, dynamic> data) {
+    if (!_isPredictorInitialized) return;
+
+    try {
+      final List<double> sensorReading = [];
+
+      // Add heart rate
+      sensorReading.add(data['heartRate']?.toDouble() ?? 0.0);
+
+      // Add accelerometer data
+      if (data['accel'] != null) {
+        sensorReading.add(data['accel']['x']?.toDouble() ?? 0.0);
+        sensorReading.add(data['accel']['y']?.toDouble() ?? 0.0);
+        sensorReading.add(data['accel']['z']?.toDouble() ?? 0.0);
+      } else {
+        sensorReading.addAll([0.0, 0.0, 0.0]);
+      }
+
+      // Add gyroscope data
+      if (data['gyro'] != null) {
+        sensorReading.add(data['gyro']['x']?.toDouble() ?? 0.0);
+        sensorReading.add(data['gyro']['y']?.toDouble() ?? 0.0);
+        sensorReading.add(data['gyro']['z']?.toDouble() ?? 0.0);
+      } else {
+        sensorReading.addAll([0.0, 0.0, 0.0]);
+      }
+
+      // Add to buffer
+      _sensorDataBuffer.add(sensorReading);
+
+      // Keep only the most recent 8 readings
+      if (_sensorDataBuffer.length > 8) {
+        _sensorDataBuffer.removeAt(0);
+      }
+    } catch (e) {
+      debugPrint('Error processing sensor data: $e');
+    }
+  }
+
+  /// Setup prediction timer
+  void _setupPredictionTimer() {
+    _predictionTimer?.cancel();
+    _predictionTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _runPrediction(),
+    );
+  }
+
+  /// Run fight/flight prediction
+  Future<void> _runPrediction() async {
+    // Only run prediction if safety mode is active and we have enough data
+    if (!state.isSafetyModeActive || _sensorDataBuffer.length < 8) return;
+
+    try {
+      // Clone the buffer to avoid modification during prediction
+      final batchData = List<List<double>>.from(_sensorDataBuffer);
+      final result = await _predictor.predict(batchData);
+      debugPrint("🔄 Fight/Flight prediction: $result");
+
+      // Handle atypical behavior detection
+      if (result.contains('Atypical')) {
+        debugPrint('⚠️ Atypical behavior detected through sensors');
+        state = state.copyWith(
+          error: 'Potential threat detected: Atypical behavior',
+        );
+        // Start emergency countdown
+        await startEmergencyCountdown();
+      }
+    } catch (e) {
+      debugPrint('❌ Error during fight/flight prediction: $e');
     }
   }
 

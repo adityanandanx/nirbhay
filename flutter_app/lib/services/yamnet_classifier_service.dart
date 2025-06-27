@@ -120,7 +120,7 @@ class YamnetClassifierService {
       _interpreter.run(inputArray, outputBuffer);
       stopwatch.stop();
 
-      debugPrint('⚡ Inference time: ${stopwatch.elapsedMilliseconds}ms');
+      // debugPrint('⚡ Inference time: ${stopwatch.elapsedMilliseconds}ms');
 
       // Find class with highest confidence
       var maxIndex = 0;
@@ -135,9 +135,9 @@ class YamnetClassifierService {
 
       if (maxIndex < _labels.length) {
         final detectedLabel = _labels[maxIndex];
-        debugPrint(
-          '🔊 Detected: $detectedLabel (${(maxConfidence * 100).toStringAsFixed(1)}%)',
-        );
+        // debugPrint(
+        //   '🔊 Detected: $detectedLabel (${(maxConfidence * 100).toStringAsFixed(1)}%)',
+        // );
         return (detectedLabel, maxConfidence);
       }
 
