@@ -4,6 +4,7 @@ import 'dart:async';
 
 import '../../providers/app_providers.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/audio_classifier_test.dart';
 import '../../widgets/location_map_section.dart';
 import '../../widgets/quick_actions_section.dart';
 import '../../widgets/safety_status_card.dart';
@@ -263,7 +264,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // Triangle of Safety Section
               const TriangleOfSafetySection(),
-              SizedBox(height: 90),
+              const SizedBox(height: 30),
+
+              // Audio Classifier Test Widget
+              const AudioClassifierTest(),
+              const SizedBox(height: 30),
+
               // Test Button for FightFlightPredictor
               Center(
                 child: ElevatedButton(
