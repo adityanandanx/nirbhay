@@ -8,7 +8,7 @@ import '../models/safety_state.dart';
 import '../services/contact_service.dart';
 import '../services/emergency_service.dart';
 import '../services/location_service.dart';
-import '../services/speech_recognition_service.dart';
+import '../services/distress_audio_detection_service.dart';
 import 'ble_provider.dart';
 import 'settings_provider.dart';
 
@@ -28,7 +28,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   late final ContactService _contactService;
   late final LocationService _locationService;
   late final EmergencyService _emergencyService;
-  late final SpeechRecognitionService _speechRecognitionService;
+  late final DistressAudioDetectionService _distressDetectionService;
 
   StreamSubscription<BLEState>? _bleStateSubscription;
 
@@ -37,10 +37,10 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     _contactService = ContactService();
     _locationService = LocationService();
     _emergencyService = EmergencyService(_settingsNotifier.state);
-    _speechRecognitionService = SpeechRecognitionService();
+    _distressDetectionService = DistressAudioDetectionService();
 
-    // Initialize speech recognition and set up emergency detection callback
-    await _initSpeechRecognition();
+    // Initialize distress detection service and set up emergency detection callback
+    await _initDistressDetection();
 
     // Set up location update callback
     _locationService.setPositionUpdateCallback(_handlePositionUpdate);
@@ -102,17 +102,14 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
 
       bool voiceDetectionActive = false;
 
-      // Start/stop voice recognition based on safety mode and settings
+      // Start/stop distress detection based on safety mode and settings
       if (newState && _settingsNotifier.state.voiceDetectionEnabled) {
-        voiceDetectionActive = await _speechRecognitionService.startListening();
-        if (voiceDetectionActive) {
-          debugPrint('✅ Voice recognition started');
-        } else {
-          debugPrint('⚠️ Voice recognition failed to start');
-        }
+        await _distressDetectionService.startListening();
+        voiceDetectionActive = true;
+        debugPrint('✅ Distress detection started');
       } else if (!newState) {
-        await _speechRecognitionService.stopListening();
-        debugPrint('✅ Voice recognition stopped');
+        await _distressDetectionService.stopListening();
+        debugPrint('✅ Distress detection stopped');
       }
 
       // Start/stop location tracking based on safety mode
@@ -294,9 +291,9 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   }
 
   @override
-  void dispose() {
+  void dispose() async {
     _bleStateSubscription?.cancel();
-    _speechRecognitionService.stopListening();
+    await _distressDetectionService.dispose();
     super.dispose();
   }
 
@@ -314,120 +311,33 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     }
   }
 
-  /// Initialize speech recognition service
-  Future<void> _initSpeechRecognition() async {
+  /// Initialize distress detection service
+  Future<void> _initDistressDetection() async {
     try {
-      // Initialize the speech recognition service
-      final initialized = await _speechRecognitionService.initialize();
-
-      if (!initialized) {
-        debugPrint('⚠️ Speech recognition initialization failed');
-        state = state.copyWith(
-          error: 'Voice detection not available on this device.',
-        );
-        return;
-      }
-
-      // Emergency handling lock to prevent multiple simultaneous triggers
-      bool isHandlingEmergency = false;
-
-      // Set up the callback for when an emergency is detected through voice
-      _speechRecognitionService.onEmergencyDetected = () async {
-        // Prevent multiple simultaneous emergency handling
-        if (isHandlingEmergency) {
-          debugPrint(
-            '⚠️ Already handling an emergency, ignoring additional trigger',
-          );
-          return;
-        }
-
-        // Only trigger if safety mode is active and not already in emergency
-        if (state.isSafetyModeActive && !state.isEmergencyActive) {
-          isHandlingEmergency = true;
-
-          try {
-            debugPrint('🚨 Emergency detected through voice keywords!');
-
-            // Update state with emergency notice
-            state = state.copyWith(
-              error:
-                  'Emergency voice command detected! Triggering emergency alert.',
-            );
-
-            // Trigger the emergency alert
-            await triggerEmergencyAlert();
-
-            // Add delay before allowing another emergency
-            await Future.delayed(const Duration(seconds: 10));
-          } catch (e) {
-            debugPrint('❌ Error handling voice emergency: $e');
-          } finally {
-            // Release emergency handling lock
-            isHandlingEmergency = false;
+      // Initialize the distress detection service with emergency callback
+      await _distressDetectionService.initialize(
+        onDistressDetected: () async {
+          // Only trigger if safety mode is active and not already in emergency
+          if (state.isSafetyModeActive && !state.isEmergencyActive) {
+            try {
+              debugPrint('🚨 Emergency detected through distress sound!');
+              await triggerEmergencyAlert();
+            } catch (e) {
+              debugPrint('❌ Failed to handle distress-triggered emergency: $e');
+            }
           }
-        } else {
-          debugPrint(
-            '⚠️ Voice emergency ignored: safety mode inactive or emergency already active',
-          );
-        }
-      };
-
-      // Set up debug callback for detected words (for debugging only)
-      _speechRecognitionService.onSpeechResult = (text) {
-        debugPrint('🔊 Speech recognized: $text');
-      };
-
-      debugPrint('✅ Speech recognition service initialized successfully');
+        },
+        onError: (error) {
+          debugPrint('❌ Distress detection error: $error');
+          state = state.copyWith(error: 'Distress detection error: $error');
+        },
+      );
+      debugPrint('✅ Distress detection service initialized');
     } catch (e) {
-      debugPrint('❌ Failed to initialize speech recognition: $e');
+      debugPrint('❌ Distress detection initialization failed: $e');
       state = state.copyWith(
-        error: 'Voice detection setup failed: ${e.toString()}',
+        error: 'Failed to initialize distress detection: ${e.toString()}',
       );
     }
-  }
-
-  /// Start speech recognition manually
-  Future<bool> startVoiceDetection() async {
-    try {
-      final started = await _speechRecognitionService.startListening();
-
-      if (started) {
-        debugPrint('✅ Voice detection started manually');
-        state = state.copyWith(isVoiceDetectionActive: true);
-      } else {
-        state = state.copyWith(
-          error: 'Failed to start voice detection',
-          isVoiceDetectionActive: false,
-        );
-      }
-
-      return started;
-    } catch (e) {
-      debugPrint('❌ Error starting voice detection: $e');
-      state = state.copyWith(
-        error: 'Voice detection error: ${e.toString()}',
-        isVoiceDetectionActive: false,
-      );
-      return false;
-    }
-  }
-
-  /// Stop speech recognition manually
-  Future<void> stopVoiceDetection() async {
-    try {
-      await _speechRecognitionService.stopListening();
-      debugPrint('✅ Voice detection stopped manually');
-      state = state.copyWith(isVoiceDetectionActive: false);
-    } catch (e) {
-      debugPrint('❌ Error stopping voice detection: $e');
-      state = state.copyWith(
-        error: 'Error stopping voice detection: ${e.toString()}',
-      );
-    }
-  }
-
-  /// Check if speech recognition is available on this device
-  Future<bool> isVoiceDetectionAvailable() async {
-    return await _speechRecognitionService.isAvailable();
   }
 }
