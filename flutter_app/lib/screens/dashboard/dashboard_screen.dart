@@ -41,7 +41,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   void _showCountdownOverlay() {
     _removeOverlay();
-    
+
     _overlayEntry = OverlayEntry(
       builder: (context) => const EmergencyCountdownOverlay(),
     );
@@ -53,13 +53,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     // Watch safety state for countdown
     final safetyState = ref.watch(safetyStateProvider);
-    
+
     // Show or hide overlay based on countdown state
     if (safetyState.isEmergencyCountdownActive && _overlayEntry == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showCountdownOverlay();
       });
-    } else if (!safetyState.isEmergencyCountdownActive && _overlayEntry != null) {
+    } else if (!safetyState.isEmergencyCountdownActive &&
+        _overlayEntry != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _removeOverlay();
       });
