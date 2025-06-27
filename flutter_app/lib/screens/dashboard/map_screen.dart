@@ -4,6 +4,7 @@ import '../../widgets/fullscreen_map_view.dart';
 import '../../widgets/online_status_indicator.dart';
 import '../../widgets/online_users_widget.dart';
 import '../../providers/location_tracking_provider.dart';
+import '../../models/safety_flag.dart';
 
 /// Provider to track whether we're showing all users or only online users
 final _showAllUsersProvider = StateProvider<bool>((ref) => false);
@@ -20,6 +21,11 @@ class MapScreen extends ConsumerWidget {
         title: const Text('Location Map'),
         elevation: 0,
         actions: [
+          // Safety flags info
+          IconButton(
+            icon: const Icon(Icons.warning_amber_rounded),
+            onPressed: () => _showSafetyFlagsInfo(context),
+          ),
           // Online users button
           IconButton(
             icon: const Icon(Icons.people_outline),
@@ -138,6 +144,80 @@ class MapScreen extends ConsumerWidget {
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('CLOSE'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showSafetyFlagsInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red),
+                const SizedBox(width: 8),
+                Text('Safety Flags'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Safety flags help mark potentially unsafe areas on the map:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Icon(Icons.place, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Red markers and circles indicate unsafe areas (${SafetyFlag.radius.toStringAsFixed(0)}m radius)',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(Icons.timer_outlined),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Flags automatically expire after 24 hours'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(Icons.opacity),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Markers fade gradually as they approach expiry',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'To mark an unsafe area, long press anywhere on the map.',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Got it'),
               ),
             ],
           ),

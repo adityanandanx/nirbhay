@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/app_providers.dart';
+import '../providers/safety_flags_provider.dart';
+import '../models/safety_flag.dart';
 
 // This is an extended version of LocationMapSection for a full screen map view
 class FullscreenMapView extends ConsumerStatefulWidget {
@@ -20,6 +22,7 @@ class _FullscreenMapViewState extends ConsumerState<FullscreenMapView> {
   LatLng? _currentPosition;
   bool _isLoading = true;
   Set<Marker> _markers = {};
+  Set<Circle> _circles = {};
   StreamSubscription<Position>? _positionStreamSubscription;
   StreamSubscription<Map<String, Map<String, dynamic>>>?
   _usersLocationSubscription;
@@ -51,9 +54,6 @@ class _FullscreenMapViewState extends ConsumerState<FullscreenMapView> {
         ).listen(_handlePositionUpdate);
       }
     });
-
-    // Load custom marker icons
-    _loadMarkerIcons();
 
     // Subscribe to other users' locations
     _subscribeToUsersLocations();
@@ -159,15 +159,6 @@ class _FullscreenMapViewState extends ConsumerState<FullscreenMapView> {
     }
   }
 
-  // Method now just exists for maintaining the initialization flow
-  void _loadMarkerIcons() {
-    // We're now using BitmapDescriptor.defaultMarkerWithHue directly in the marker creation
-    // to avoid any bitmap loading or caching issues
-    debugPrint(
-      'Using default Google Maps markers with different hues for user status',
-    );
-  }
-
   // Listen to all users' locations and update markers
   void _subscribeToUsersLocations() {
     // Get the current user ID from Firebase auth
@@ -249,6 +240,220 @@ class _FullscreenMapViewState extends ConsumerState<FullscreenMapView> {
     setState(() {
       _markers = updatedMarkers;
     });
+  }
+
+  // Update map markers and circles to include both user locations and safety flags
+  void _updateMapMarkers() {
+    final Set<Marker> updatedMarkers = {}..addAll(_markers);
+    final Set<Circle> updatedCircles = {};
+
+    // Add safety flags from the provider
+    final safetyFlags = ref.read(safetyFlagsProvider);
+    safetyFlags.whenData((flags) {
+      for (final flag in flags) {
+        if (flag.isValid()) {
+          final opacity = flag.getOpacity();
+          updatedMarkers.add(
+            Marker(
+              markerId: MarkerId('flag_${flag.id}'),
+              position: flag.location,
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueRed,
+              ),
+              alpha: opacity,
+              infoWindow: InfoWindow(
+                title: 'Unsafe Area',
+                snippet:
+                    flag.description ??
+                    'Reported ${_getTimeAgo(flag.createdAt)}',
+              ),
+              onTap: () => _showFlagDetails(flag),
+            ),
+          );
+          // Add circle for each flag
+          updatedCircles.add(flag.getCircle());
+        }
+      }
+    });
+
+    if (mounted) {
+      setState(() {
+        _markers = updatedMarkers;
+        _circles = updatedCircles;
+      });
+    }
+  }
+
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inHours < 1) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else {
+      return '${difference.inDays}d ago';
+    }
+  }
+
+  void _showFlagDetails(SafetyFlag flag) {
+    showModalBottomSheet(
+      context: context,
+      builder:
+          (context) => Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.red,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Unsafe Area Report',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (flag.description != null) ...[
+                  Text(
+                    'Description:',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(flag.description!),
+                  const SizedBox(height: 12),
+                ],
+                Text(
+                  'Reported: ${_getTimeAgo(flag.createdAt)}',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This flag will automatically expire in ${_getRemainingTime(flag.createdAt)}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+    );
+  }
+
+  String _getRemainingTime(DateTime createdAt) {
+    final expiryTime = createdAt.add(Duration(hours: 24));
+    final remaining = expiryTime.difference(DateTime.now());
+
+    if (remaining.inHours > 1) {
+      return '${remaining.inHours} hours';
+    } else {
+      return '${remaining.inMinutes} minutes';
+    }
+  }
+
+  // Add floating action button to report current location
+  Widget _buildReportButton() {
+    return Positioned(
+      left: 16,
+      bottom: 16, // Position above other controls
+      child: FloatingActionButton(
+        heroTag: 'reportLocation',
+        backgroundColor: Colors.red,
+        onPressed: _showAddFlagDialog,
+        child: Icon(Icons.warning_amber_rounded, color: Colors.white),
+      ),
+    );
+  }
+
+  void _showAddFlagDialog() {
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to get your current location'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final descriptionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red),
+                const SizedBox(width: 8),
+                Text('Report Location'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'This will mark your current location as unsafe for the next 24 hours.',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'A ${SafetyFlag.radius.toStringAsFixed(0)}-meter radius around this point will be marked.',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descriptionController,
+                  decoration: InputDecoration(
+                    labelText: 'Description (optional)',
+                    hintText: 'What makes this area unsafe?',
+                    border: OutlineInputBorder(),
+                  ),
+                  textAlignVertical: TextAlignVertical.top,
+                  maxLines: 5,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final userId = FirebaseAuth.instance.currentUser?.uid;
+                  if (userId != null && _currentPosition != null) {
+                    ref
+                        .read(safetyFlagsNotifierProvider.notifier)
+                        .addSafetyFlag(
+                          _currentPosition!,
+                          userId,
+                          description:
+                              descriptionController.text.isEmpty
+                                  ? null
+                                  : descriptionController.text,
+                        );
+                  }
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text('Report'),
+              ),
+            ],
+          ),
+    );
   }
 
   // Toggle showing offline users
@@ -356,6 +561,14 @@ class _FullscreenMapViewState extends ConsumerState<FullscreenMapView> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch safety flags
+    final safetyFlags = ref.watch(safetyFlagsProvider);
+
+    // Update markers when safety flags change
+    safetyFlags.whenData((flags) {
+      _updateMapMarkers();
+    });
+
     return Stack(
       children: [
         _isLoading
@@ -369,61 +582,43 @@ class _FullscreenMapViewState extends ConsumerState<FullscreenMapView> {
                 zoom: 15,
               ),
               myLocationEnabled: true,
-              myLocationButtonEnabled: true,
+              myLocationButtonEnabled: false,
               zoomControlsEnabled: true,
               markers: _markers,
+              circles: _circles,
               onMapCreated: (GoogleMapController controller) {
                 _controller.complete(controller);
               },
             ),
 
-        // Map control buttons overlay
+        // Map controls overlay
         _buildMapControls(),
 
-        // Status indicator overlay
+        // Report button
+        _buildReportButton(),
+
+        // Help tooltip
         Positioned(
-          left: 16,
           top: 16,
-          child: Consumer(
-            builder: (context, ref, _) {
-              final locationState = ref.watch(locationTrackingProvider);
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color:
-                      locationState.isSharingLocation
-                          ? Colors.green.withOpacity(0.8)
-                          : Colors.grey.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      locationState.isSharingLocation
-                          ? Icons.cloud_upload_outlined
-                          : Icons.cloud_off_outlined,
-                      color: Colors.white,
-                      size: 16,
+          left: 16,
+          right: 16,
+          child: Card(
+            color: Colors.white.withOpacity(0.9),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 20, color: Colors.grey[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Use the red button to mark your current location as unsafe',
+                      style: TextStyle(color: Colors.grey[700], fontSize: 12),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      locationState.isSharingLocation
-                          ? 'Live Location Sharing'
-                          : 'Sharing Disabled',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
