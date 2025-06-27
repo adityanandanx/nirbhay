@@ -20,6 +20,15 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
+  // Set status bar style
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+  );
+
   runApp(const ProviderScope(child: MyApp()));
 }
 

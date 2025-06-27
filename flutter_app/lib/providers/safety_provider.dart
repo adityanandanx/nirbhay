@@ -59,18 +59,24 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
     // Listen to BLE state changes for sensor data and connection status
     _bleStateSubscription = _bleStateNotifier.stream.listen((bleState) {
       // If safety mode is active but device disconnected, show warning but keep safety mode active
-      if (state.isSafetyModeActive && !bleState.isConnected) {
-        state = state.copyWith(
-          error:
-              'Warning: Wearable device disconnected. Safety mode continues with phone-only features.',
-        );
-      }
+      // if (state.isSafetyModeActive && !bleState.isConnected) {
+      //   state = state.copyWith(
+      //     error:
+      //         'Warning: Wearable device disconnected. Safety mode continues with phone-only features.',
+      //   );
+      // }
 
-      // Check sensor data for automatic threat detection (only if device is connected)
-      if (bleState.sensorData != null &&
-          state.isSafetyModeActive &&
-          bleState.isConnected) {
-        _checkForThreat(bleState.sensorData!);
+      // Check sensor data for automatic threat detection and emergency alerts
+      if (bleState.sensorData != null && bleState.isConnected) {
+        // Check for emergency flag from BLE device
+        if (bleState.sensorData!['emergency_detected'] == true) {
+          // Trigger emergency alert immediately
+          triggerEmergencyAlert();
+        }
+        // Continue with normal threat detection if in safety mode
+        else if (state.isSafetyModeActive) {
+          _checkForThreat(bleState.sensorData!);
+        }
       }
     });
   }

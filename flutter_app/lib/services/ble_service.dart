@@ -200,6 +200,14 @@ class BLEService {
 
       // Parse JSON data from ESP32
       Map<String, dynamic> parsedData = json.decode(data);
+      
+      // Specifically check for emergency_response
+      if (parsedData.containsKey('emergency_response') && 
+          parsedData['emergency_response'] == 'sos') {
+        // Add an emergency flag to the data
+        parsedData['emergency_detected'] = true;
+      }
+      
       _dataController.add(parsedData);
     } catch (e) {
       debugPrint("Error parsing received data: $e");
@@ -230,11 +238,7 @@ class BLEService {
 
   /// Send emergency alert to device
   Future<bool> sendEmergencyAlert() async {
-    return await sendData({
-      'type': 'emergency',
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'action': 'alert',
-    });
+    return await sendData({'emergency': true});
   }
 
   /// Send safety mode toggle
