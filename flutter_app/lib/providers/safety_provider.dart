@@ -204,6 +204,9 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         }
       }
 
+      // Cancel any active countdown since we're triggering the emergency now
+      cancelEmergencyCountdown();
+
       // Trigger emergency through the service
       state = await _emergencyService.triggerEmergencyAlert(
         state,
@@ -408,7 +411,7 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   void _setupPredictionTimer() {
     _predictionTimer?.cancel();
     _predictionTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(seconds: 8),
       (_) => _runPrediction(),
     );
   }
@@ -417,6 +420,8 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
   Future<void> _runPrediction() async {
     // Only run prediction if safety mode is active and we have enough data
     if (!state.isSafetyModeActive || _sensorDataBuffer.length < 8) return;
+
+    debugPrint('🔄 Running fight/flight prediction...');
 
     try {
       // Clone the buffer to avoid modification during prediction
