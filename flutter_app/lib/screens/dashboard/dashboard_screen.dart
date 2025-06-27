@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nirbhay_flutter/widgets/sos_floating_action_button.dart';
 import 'home_screen.dart';
 import 'contacts_screen.dart';
+import 'map_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
@@ -17,6 +18,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   final List<Widget> _screens = const [
     HomeScreen(),
+    MapScreen(),
     ContactsScreen(),
     ProfileScreen(),
     SettingsScreen(),
@@ -38,6 +40,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: 'Map',
           ),
           NavigationDestination(
             icon: Icon(Icons.contacts_outlined),
