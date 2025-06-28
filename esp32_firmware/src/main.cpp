@@ -91,7 +91,7 @@ unsigned long demoDuration = 20000; // 15 seconds of demo
 
 // Demo button location and size
 #define DEMO_BUTTON_X 70  // Center bottom placement
-#define DEMO_BUTTON_Y 90 // Near bottom of screen
+#define DEMO_BUTTON_Y 110 // Near bottom of screen
 #define DEMO_BUTTON_W 140 // Make it wide enough to tap easily
 #define DEMO_BUTTON_H 40  // Make it tall enough to tap easily
 int32_t lastTouchX = 0;
@@ -154,14 +154,16 @@ void drawSafetyButton()
   gfx->println("I AM SAFE");
 }
 
-bool isTouchInSafetyButton(int32_t x, int32_t y) {
-    bool isInButton = (x >= SAFETY_BUTTON_X && x <= SAFETY_BUTTON_X + SAFETY_BUTTON_W &&
-                      y >= SAFETY_BUTTON_Y && y <= SAFETY_BUTTON_Y + SAFETY_BUTTON_H);
-    
-    if (isInButton) {
-        Serial.printf("Touch in safety button: X=%d, Y=%d\n", x, y);
-    }
-    return isInButton;
+bool isTouchInSafetyButton(int32_t x, int32_t y)
+{
+  bool isInButton = (x >= SAFETY_BUTTON_X && x <= SAFETY_BUTTON_X + SAFETY_BUTTON_W &&
+                     y >= SAFETY_BUTTON_Y && y <= SAFETY_BUTTON_Y + SAFETY_BUTTON_H);
+
+  if (isInButton)
+  {
+    Serial.printf("Touch in safety button: X=%d, Y=%d\n", x, y);
+  }
+  return isInButton;
 }
 void sendSensorData()
 {
@@ -169,6 +171,8 @@ void sendSensorData()
     return; // Don't send data during emergency
 
   String data = "{";
+  // Add demo mode status
+  data += "\"demo\":" + String(demoMode ? "true" : "false") + ",";
   data += "\"heartRate\":" + String(beatAvg > 0 ? beatAvg : 0) + ",";
   data += "\"fingerPresent\":" + String(fingerPresent ? "true" : "false") + ",";
 
@@ -394,39 +398,45 @@ void setup()
 
   delay(1000);
 }
-void simulateDemoData(unsigned long currentMillis) {
-    float demoProgress = (float)(currentMillis - demoStartTime) / demoDuration;
-    
-    // Heart rate simulation remains same
-    if (demoProgress < 0.2) {
-        beatAvg = 70 + (int)(60.0 * demoProgress / 0.2);
-    } else {
-        beatAvg = 130 + random(-5, 6);
-        emergencyButton = true;
+void simulateDemoData(unsigned long currentMillis)
+{
+  float demoProgress = (float)(currentMillis - demoStartTime) / demoDuration;
+
+  // Heart rate simulation remains same
+  if (demoProgress < 0.2)
+  {
+    beatAvg = 70 + (int)(60.0 * demoProgress / 0.2);
+  }
+  else
+  {
+    beatAvg = 130 + random(-5, 6);
+    emergencyButton = true;
+  }
+
+  // Enhanced motion simulation
+  if (imuInitialized)
+  {
+    // Increase base intensity
+    float intensityFactor = 3.0; // Increased base intensity
+
+    // Make movement more dramatic during emergency
+    if (demoProgress > 0.2 && demoProgress < 0.6)
+    {
+      intensityFactor = 8.0; // Much stronger during emergency phase
     }
 
-    // Enhanced motion simulation
-    if (imuInitialized) {
-        // Increase base intensity
-        float intensityFactor = 3.0;  // Increased base intensity
-        
-        // Make movement more dramatic during emergency
-        if (demoProgress > 0.2 && demoProgress < 0.6) {
-            intensityFactor = 8.0;  // Much stronger during emergency phase
-        }
+    float phase = demoProgress * 2 * PI * 4; // Increased frequency
 
-        float phase = demoProgress * 2 * PI * 4;  // Increased frequency
+    // More dramatic accelerometer data (like violent shaking or falling)
+    acc.x = sin(phase * 8) * 4.0 * intensityFactor + random(-20, 21) / 10.0;
+    acc.y = cos(phase * 9) * 3.6 * intensityFactor + random(-20, 21) / 10.0;
+    acc.z = sin(phase * 7 + PI / 3) * 4.4 * intensityFactor + random(-20, 21) / 10.0;
 
-        // More dramatic accelerometer data (like violent shaking or falling)
-        acc.x = sin(phase * 8) * 4.0 * intensityFactor + random(-20, 21) / 10.0;
-        acc.y = cos(phase * 9) * 3.6 * intensityFactor + random(-20, 21) / 10.0;
-        acc.z = sin(phase * 7 + PI/3) * 4.4 * intensityFactor + random(-20, 21) / 10.0;
-
-        // More dramatic gyroscope data (like rapid spinning)
-        gyr.x = sin(phase * 5) * 40.0 * intensityFactor + random(-10, 11);
-        gyr.y = cos(phase * 6) * 35.0 * intensityFactor + random(-10, 11);
-        gyr.z = sin(phase * 4.5) * 45.0 * intensityFactor + random(-10, 11);
-    }
+    // More dramatic gyroscope data (like rapid spinning)
+    gyr.x = sin(phase * 5) * 40.0 * intensityFactor + random(-10, 11);
+    gyr.y = cos(phase * 6) * 35.0 * intensityFactor + random(-10, 11);
+    gyr.z = sin(phase * 4.5) * 45.0 * intensityFactor + random(-10, 11);
+  }
 }
 // void simulateDemoData(unsigned long currentMillis)
 // {
@@ -715,7 +725,8 @@ void loop()
   //   spo2Index = 0;
   //   Serial.println("Collection canceled - finger removed");
   // }
-  if (emergencyActive) {
+  if (emergencyActive)
+  {
     unsigned long currentMillis = millis();
 
     // Get fresh touch coordinates
@@ -724,68 +735,75 @@ void loop()
     bool currentTouch = (touchX > 0 && touchY > 0);
 
     // Debug touch coordinates
-    if (currentTouch) {
-        Serial.printf("Emergency Screen Touch: X=%d, Y=%d\n", touchX, touchY);
+    if (currentTouch)
+    {
+      Serial.printf("Emergency Screen Touch: X=%d, Y=%d\n", touchX, touchY);
     }
 
     // Handle touch for safety button
-    if (currentTouch && !touchInProgress) {
-        touchInProgress = true;
-        
-        if (isTouchInSafetyButton(touchX, touchY)) {
-            // User confirmed they are safe
-            emergencyActive = false;
-            sosTriggered = false;
-            Serial.println("Emergency cancelled by user");
+    if (currentTouch && !touchInProgress)
+    {
+      touchInProgress = true;
 
-            // Send cancellation to app
-            String response = "{\"emergency_response\":\"cancel\"}";
-            pCharacteristic->setValue(response.c_str());
-            pCharacteristic->notify();
-            
-            // Debug print
-            Serial.println("Sent to phone: " + response);
+      if (isTouchInSafetyButton(touchX, touchY))
+      {
+        // User confirmed they are safe
+        emergencyActive = false;
+        sosTriggered = false;
+        Serial.println("Emergency cancelled by user");
 
-            // Reset display
-            gfx->fillScreen(BLACK);
-            lastDisplay = 0;
-            
-            return;  // Exit emergency mode
-        }
-    } else if (!currentTouch) {
-        touchInProgress = false;  // Reset touch state when no touch detected
+        // Send cancellation to app
+        String response = "{\"emergency_response\":\"cancel\"}";
+        pCharacteristic->setValue(response.c_str());
+        pCharacteristic->notify();
+
+        // Debug print
+        Serial.println("Sent to phone: " + response);
+
+        // Reset display
+        gfx->fillScreen(BLACK);
+        lastDisplay = 0;
+
+        return; // Exit emergency mode
+      }
+    }
+    else if (!currentTouch)
+    {
+      touchInProgress = false; // Reset touch state when no touch detected
     }
 
     // Update emergency screen
-    if (currentMillis - lastDisplay > 100) {
-        lastDisplay = currentMillis;
+    if (currentMillis - lastDisplay > 100)
+    {
+      lastDisplay = currentMillis;
 
-        // Clear screen with red background
-        gfx->fillScreen(RED);
+      // Clear screen with red background
+      gfx->fillScreen(RED);
 
-        // Draw emergency text
-        gfx->setTextColor(WHITE);
-        gfx->setTextSize(3);
-        gfx->setCursor(20, 40);
-        gfx->println("EMERGENCY!");
+      // Draw emergency text
+      gfx->setTextColor(WHITE);
+      gfx->setTextSize(3);
+      gfx->setCursor(20, 40);
+      gfx->println("EMERGENCY!");
 
-        // Calculate and show countdown
-        int secondsLeft = emergencyCountdown - ((currentMillis - emergencyStartTime) / 1000);
-        if (secondsLeft > 0) {
-            // Show countdown
-            gfx->setTextSize(2);
-            gfx->setCursor(20, 90);
-            gfx->print("SOS in: ");
-            gfx->print(secondsLeft);
-            gfx->println("s");
+      // Calculate and show countdown
+      int secondsLeft = emergencyCountdown - ((currentMillis - emergencyStartTime) / 1000);
+      if (secondsLeft > 0)
+      {
+        // Show countdown
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 90);
+        gfx->print("SOS in: ");
+        gfx->print(secondsLeft);
+        gfx->println("s");
 
-            // Draw the safety button
-            drawSafetyButton();
-        }
+        // Draw the safety button
+        drawSafetyButton();
+      }
 
-        return;  // Skip normal display update
+      return; // Skip normal display update
     }
-}
+  }
   // Updating display
   bool forceUpdate = fingerStatusChanged;
   if (currentMillis - lastDisplay > 500 || fingerStatusChanged)
