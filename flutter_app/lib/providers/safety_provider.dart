@@ -227,7 +227,21 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
 
   Future<void> _checkForThreat(Map<String, dynamic> sensorData) async {
     try {
-      // Use emergency service to detect potential threats
+      // Check for demo mode atypical flag
+      if (sensorData['demo_atypical'] == true) {
+        debugPrint('⚠️ Demo mode atypical behavior detected');
+        // Start distress audio detection
+        if (!_distressDetectionService.isListening) {
+          debugPrint('🎤 Starting distress audio detection in demo mode');
+          await _distressDetectionService.startListening();
+        }
+        state = state.copyWith(
+          error: 'Demo Mode: Monitoring for distress signals',
+        );
+        return;
+      }
+
+      // Normal threat detection for non-demo mode
       final updatedState = await _emergencyService.detectPotentialThreat(
         state,
         sensorData,
@@ -237,8 +251,6 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
       if (updatedState.error != null &&
           updatedState.error!.contains('Potential threat detected')) {
         state = updatedState;
-
-        // Start countdown before triggering emergency alert
         await startEmergencyCountdown();
       }
     } catch (e) {
@@ -432,11 +444,19 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
       // Handle atypical behavior detection
       if (result.contains('Atypical')) {
         debugPrint('⚠️ Atypical behavior detected through sensors');
+
+        // Start distress audio detection to confirm the emergency
+        if (!_distressDetectionService.isListening) {
+          debugPrint(
+            '🎤 Starting distress audio detection due to atypical behavior',
+          );
+          await _distressDetectionService.startListening();
+        }
+
+        // Update state to show warning
         state = state.copyWith(
-          error: 'Potential threat detected: Atypical behavior',
+          error: 'Potential threat detected: Monitoring for distress signals',
         );
-        // Start emergency countdown
-        await startEmergencyCountdown();
       }
     } catch (e) {
       debugPrint('❌ Error during fight/flight prediction: $e');

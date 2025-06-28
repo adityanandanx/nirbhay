@@ -259,6 +259,14 @@ class BLEService {
         parsedData['emergency_cancelled'] = true;
       }
 
+      // Check for demo mode
+      if (parsedData.containsKey('demo_mode') &&
+          parsedData['demo_mode'] == true) {
+        debugPrint("📱 Demo mode detected - Flagging as atypical behavior");
+        // Directly flag as atypical for demo mode
+        parsedData['demo_atypical'] = true;
+      }
+
       _dataController.add(parsedData);
     } catch (e) {
       debugPrint("Error parsing received data: $e");
