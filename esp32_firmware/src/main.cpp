@@ -417,7 +417,7 @@ void simulateDemoData(unsigned long currentMillis)
   if (imuInitialized)
   {
     // Increase base intensity
-    float intensityFactor = 3.0; // Increased base intensity
+    float intensityFactor = 5.0; // Increased base intensity
 
     // Make movement more dramatic during emergency
     if (demoProgress > 0.2 && demoProgress < 0.6)
@@ -842,7 +842,6 @@ void loop()
       }
       else
       {
-        // beatAvg = random(85, 100);
         gfx->print(beatAvg);
         gfx->println(" BPM");
       }
