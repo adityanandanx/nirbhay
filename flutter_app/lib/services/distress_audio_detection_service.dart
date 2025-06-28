@@ -114,6 +114,7 @@ class DistressAudioDetectionService {
     required Function() onDistressDetected,
     Function(String speech)? onSpeechRecognized,
     Function(String error)? onError,
+    Function(String label, double confidence)? onSoundDetected,
   }) async {
     if (_isInitialized) return;
 
@@ -121,6 +122,9 @@ class DistressAudioDetectionService {
       _onSpeechRecognized = onSpeechRecognized;
       _classifier = ContinuousAudioClassifier(
         onSoundDetected: (label, confidence) {
+          // Forward the detected sound to the callback
+          onSoundDetected?.call(label, confidence);
+          // Process the sound for distress detection
           _processDetectedSound(label, confidence, onDistressDetected);
         },
       );

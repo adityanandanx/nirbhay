@@ -8,6 +8,7 @@ import '../../widgets/location_map_section.dart';
 import '../../widgets/quick_actions_section.dart';
 import '../../widgets/safety_status_card.dart';
 import '../../widgets/sos_button.dart';
+import '../../widgets/sound_detection_status.dart';
 import '../../widgets/triangle_of_safety_section.dart';
 import '../../widgets/wearable_status_card.dart';
 import '../ble_connection_screen.dart';
@@ -139,6 +140,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(height: 30),
               // Big SOS Button (only visible when safety mode is active)
               const SOSButton(),
+              // Show sound detection status when safety mode is active
+              if (ref.watch(safetyStateProvider).isSafetyModeActive)
+                const SoundDetectionStatus(),
               if (ref.watch(safetyStateProvider).isSafetyModeActive)
                 const SizedBox(height: 30),
               // Safety Status Card

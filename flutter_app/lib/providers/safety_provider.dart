@@ -342,17 +342,24 @@ class SafetyStateNotifier extends StateNotifier<SafetyState> {
         onDistressDetected: () async {
           // Only trigger if safety mode is active and not already in emergency
           if (state.isSafetyModeActive && !state.isEmergencyActive) {
-            try {
-              debugPrint('🚨 Emergency detected through distress sound!');
-              await startEmergencyCountdown();
-            } catch (e) {
-              debugPrint('❌ Failed to handle distress-triggered emergency: $e');
-            }
+            debugPrint('🚨 Emergency detected through distress sound!');
+            await startEmergencyCountdown();
           }
+        },
+        onSpeechRecognized: (speech) {
+          debugPrint('🗣️ Speech recognized: $speech');
         },
         onError: (error) {
           debugPrint('❌ Distress detection error: $error');
-          state = state.copyWith(error: 'Distress detection error: $error');
+          state = state.copyWith(
+            error: 'Distress detection error: $error',
+          );
+        },
+        onSoundDetected: (label, confidence) {
+          // Update state with the latest detected sound
+          state = state.copyWith(
+            detectedSound: (label, confidence),
+          );
         },
       );
       debugPrint('✅ Distress detection service initialized');

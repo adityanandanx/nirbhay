@@ -14,6 +14,7 @@ class SafetyState {
   final bool isVoiceDetectionActive;
   final bool isEmergencyCountdownActive;
   final DateTime? emergencyCountdownStartTime;
+  final (String, double)? detectedSound; // Tuple of (sound label, confidence)
 
   const SafetyState({
     this.isSafetyModeActive = false,
@@ -27,6 +28,7 @@ class SafetyState {
     this.isVoiceDetectionActive = false,
     this.isEmergencyCountdownActive = false,
     this.emergencyCountdownStartTime,
+    this.detectedSound,
   });
 
   SafetyState copyWith({
@@ -41,6 +43,7 @@ class SafetyState {
     bool? isVoiceDetectionActive,
     bool? isEmergencyCountdownActive,
     DateTime? emergencyCountdownStartTime,
+    (String, double)? detectedSound,
   }) {
     return SafetyState(
       isSafetyModeActive: isSafetyModeActive ?? this.isSafetyModeActive,
@@ -50,13 +53,11 @@ class SafetyState {
       lastEmergencyTime: lastEmergencyTime ?? this.lastEmergencyTime,
       emergencyContacts: emergencyContacts ?? this.emergencyContacts,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
-      isVoiceDetectionActive:
-          isVoiceDetectionActive ?? this.isVoiceDetectionActive,
-      isEmergencyCountdownActive:
-          isEmergencyCountdownActive ?? this.isEmergencyCountdownActive,
-      emergencyCountdownStartTime:
-          emergencyCountdownStartTime ?? this.emergencyCountdownStartTime,
+      error: error,  // Intentionally not using ?? to allow setting to null
+      isVoiceDetectionActive: isVoiceDetectionActive ?? this.isVoiceDetectionActive,
+      isEmergencyCountdownActive: isEmergencyCountdownActive ?? this.isEmergencyCountdownActive,
+      emergencyCountdownStartTime: emergencyCountdownStartTime ?? this.emergencyCountdownStartTime,
+      detectedSound: detectedSound,  // Intentionally not using ?? to allow setting to null
     );
   }
 
