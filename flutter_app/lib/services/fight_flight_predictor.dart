@@ -8,11 +8,11 @@ class FightFlightPredictor {
   List<double>? _mean;
   List<double>? _scale;
 
- 
+
 
   // Load model and scaler params
   Future<void> load() async {
-    _interpreter = await Interpreter.fromAsset('assets/fight_flight_detector.tflite');
+    _interpreter = await Interpreter.fromAsset('assets/fight_flight_detector_with_calibration.tflite');
     final scalerJson = await rootBundle.loadString('assets/scaler_params.json');
     final scalerParams = json.decode(scalerJson);
     _mean = List<double>.from(scalerParams['mean']);
@@ -20,6 +20,7 @@ class FightFlightPredictor {
   }
 
   // Feature engineering for a batch of 8 readings
+  // Each reading: [hr, ax, ay, az, gx, gy, gz]
   List<double> engineerFeatures(List<List<double>> batch) {
     List<double> hr = batch.map((e) => e[0]).toList();
     List<List<double>> accel = batch.map((e) => e.sublist(1, 4)).toList();
